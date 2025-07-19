@@ -44,7 +44,7 @@ pub fn assign_gpu(vm: VmHandle, cfg: &GpuConfig) -> Result<GpuHandle, GpuError> 
 
     mgr.allocs.lock().entry(vm).or_default().push(handle);
 
-    security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: 0 }); // placeholder for audit
+    security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: 0, wcet_ns: None }); // placeholder for audit
     Ok(handle)
 }
 

@@ -18,6 +18,7 @@ pub enum SecurityEvent {
     /// VMEXIT latency exceeded target threshold (10 ns)
     PerfWarning {
         avg_latency_ns: u64,
+        wcet_ns: Option<u64>,
     },
     // Future event types will follow here.
 }

@@ -21,6 +21,7 @@ static mut METRICS_PAGE: MetricsPage = MetricsPage(PerformanceMetrics {
     running_vms: 0,
     shared_pages: 0,
     numa_misses: 0,
+    max_wcet_ns: 0,
     timestamp_ns: 0,
 });
 
@@ -32,6 +33,7 @@ pub struct PerformanceMetrics {
     pub running_vms: u64,
     pub shared_pages: u64,
     pub numa_misses: u64,
+    pub max_wcet_ns: u64,
     pub timestamp_ns: u64,
 }
 
@@ -40,6 +42,7 @@ static TOTAL_EXIT_TIME_NS: AtomicU64 = AtomicU64::new(0);
 static RUNNING_VMS: AtomicU64 = AtomicU64::new(0);
 static SHARED_PAGES: AtomicU64 = AtomicU64::new(0);
 static NUMA_MISSES: AtomicU64 = AtomicU64::new(0);
+static MAX_WCET_NS: AtomicU64 = AtomicU64::new(0);
 
 #[inline]
 pub fn record_vmexit(latency_ns: u64) {
@@ -58,11 +61,12 @@ pub fn record_vmexit(latency_ns: u64) {
         };
         // Security event if latency exceeds 10 ns
         if METRICS_PAGE.0.avg_exit_latency_ns > 10 {
-            security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: METRICS_PAGE.0.avg_exit_latency_ns });
+            security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: METRICS_PAGE.0.avg_exit_latency_ns, wcet_ns: None });
         }
         METRICS_PAGE.0.timestamp_ns = crate::scheduler::cycles_to_nanoseconds(crate::scheduler::get_cycle_counter());
         METRICS_PAGE.0.shared_pages = SHARED_PAGES.load(Ordering::Relaxed);
         METRICS_PAGE.0.numa_misses = NUMA_MISSES.load(Ordering::Relaxed);
+        METRICS_PAGE.0.max_wcet_ns = MAX_WCET_NS.load(Ordering::Relaxed);
     }
 }
 
@@ -93,6 +97,7 @@ pub fn collect() -> PerformanceMetrics {
         running_vms: RUNNING_VMS.load(Ordering::Relaxed),
         shared_pages: SHARED_PAGES.load(Ordering::Relaxed),
         numa_misses: NUMA_MISSES.load(Ordering::Relaxed),
+        max_wcet_ns: MAX_WCET_NS.load(Ordering::Relaxed),
         timestamp_ns: crate::scheduler::cycles_to_nanoseconds(crate::scheduler::get_cycle_counter()),
     }
 }
@@ -110,4 +115,21 @@ pub fn remove_shared_pages(count: u64) {
 /// Increment NUMA miss counter when local-node allocation fails.
 pub fn add_numa_miss() {
     NUMA_MISSES.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Record WCET for a scheduling quantum.
+pub fn record_wcet(ns: u64) {
+    let mut prev = MAX_WCET_NS.load(Ordering::Relaxed);
+    while ns > prev {
+        match MAX_WCET_NS.compare_exchange(prev, ns, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => {
+                unsafe { METRICS_PAGE.0.max_wcet_ns = ns; }
+                if ns > 10 {
+                    crate::security::record_event(crate::security::SecurityEvent::PerfWarning { avg_latency_ns: 0, wcet_ns: Some(ns) });
+                }
+                break;
+            }
+            Err(cur) => prev = cur,
+        }
+    }
 } 

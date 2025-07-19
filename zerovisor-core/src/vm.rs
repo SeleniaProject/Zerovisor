@@ -118,7 +118,7 @@ pub fn create_vm(cfg: &VmConfig) -> Result<VmHandle, VmError> {
     });
 
     // 4. Security log
-    security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: 0 }); // placeholder
+    security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: 0, wcet_ns: None }); // placeholder
 
     Ok(cfg.id)
 }
