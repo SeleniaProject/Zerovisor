@@ -84,6 +84,31 @@ pub enum MemoryType {
     Bootloader,
     Kernel,
     Hypervisor,
+    /// UEFI Loader code
+    LoaderCode,
+    /// UEFI Loader data
+    LoaderData,
+    /// UEFI Boot services code
+    BootServicesCode,
+    /// UEFI Boot services data
+    BootServicesData,
+}
+
+/// Convert UEFI `MemoryType` to HAL `MemoryType`
+#[cfg(feature = "uefi")]
+pub fn from_uefi(uefi_ty: uefi::table::boot::MemoryType) -> MemoryType {
+    use uefi::table::boot::MemoryType as UefiTy;
+    match uefi_ty {
+        UefiTy::CONVENTIONAL => MemoryType::Available,
+        UefiTy::LOADER_CODE => MemoryType::LoaderCode,
+        UefiTy::LOADER_DATA => MemoryType::LoaderData,
+        UefiTy::BOOT_SERVICES_CODE => MemoryType::BootServicesCode,
+        UefiTy::BOOT_SERVICES_DATA => MemoryType::BootServicesData,
+        UefiTy::ACPI_RECLAIM => MemoryType::AcpiReclaimable,
+        UefiTy::ACPI_NON_VOLATILE => MemoryType::AcpiNvs,
+        UefiTy::BAD_MEMORY => MemoryType::BadMemory,
+        _ => MemoryType::Reserved,
+    }
 }
 
 /// Physical memory allocator trait
