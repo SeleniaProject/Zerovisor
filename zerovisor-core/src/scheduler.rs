@@ -7,6 +7,7 @@
 extern crate alloc;
 
 use alloc::collections::BinaryHeap;
+use alloc::collections::BTreeMap;
 use core::cmp::Ordering;
 use spin::Mutex;
 
@@ -51,6 +52,12 @@ impl PartialOrd for SchedEntity {
     }
 }
 
+pub struct ExecStats {
+    pub max_ns: u64,
+    pub total_ns: u64,
+    pub count: u64,
+}
+
 // --------------------------------------------------------------------------
 // QuantumScheduler
 // --------------------------------------------------------------------------
@@ -59,6 +66,7 @@ pub struct QuantumScheduler {
     ready_queue: BinaryHeap<SchedEntity>,
     real_time_queue: BinaryHeap<SchedEntity>,
     quantum_ns: u64,
+    stats: BTreeMap<(VmHandle, VcpuHandle), ExecStats>,
 }
 
 impl QuantumScheduler {
@@ -67,6 +75,7 @@ impl QuantumScheduler {
             ready_queue: BinaryHeap::new(),
             real_time_queue: BinaryHeap::new(),
             quantum_ns: 1_000_000, // 1ms デフォルト
+            stats: BTreeMap::new(),
         }
     }
 
@@ -103,6 +112,14 @@ impl QuantumScheduler {
 
     /// 量子長を ns 単位で設定。
     pub fn set_quantum_ns(&mut self, ns: u64) { self.quantum_ns = ns; }
+
+    pub fn record_exec_time(&mut self, entity: SchedEntity, exec_ns: u64) {
+        let key = (entity.vm, entity.vcpu);
+        let entry = self.stats.entry(key).or_insert(ExecStats { max_ns: 0, total_ns: 0, count: 0 });
+        if exec_ns > entry.max_ns { entry.max_ns = exec_ns; }
+        entry.total_ns += exec_ns;
+        entry.count += 1;
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -128,6 +145,11 @@ pub fn pick_next() -> Option<SchedEntity> { SCHEDULER.lock().schedule_next() }
 
 /// 量子満了時に呼び出し。
 pub fn quantum_expired(entity: SchedEntity) { SCHEDULER.lock().handle_quantum_expiry(entity) }
+
+/// 実行時間を記録。
+pub fn record_exec_time(entity: SchedEntity, exec_ns: u64) {
+    SCHEDULER.lock().record_exec_time(entity, exec_ns);
+}
 
 // --------------------------------------------------------------------------
 // 補助関数

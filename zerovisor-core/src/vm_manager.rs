@@ -85,6 +85,8 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
                         // record latency (placeholder 0 for now, need to compute)
                         monitor::record_vmexit(latency_ns);
                         monitor::record_wcet(latency_ns);
+                        // Update per-VCPU execution statistics for WCET analysis.
+                        scheduler::record_exec_time(entity, latency_ns);
 
                         match action {
                             Ok(VmExitAction::Continue) => quantum_expired(entity),
