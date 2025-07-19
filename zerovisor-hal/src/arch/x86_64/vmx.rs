@@ -10,6 +10,30 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, Ordering};
+use spin::Mutex as SpinMutex;
+
+/// Simple CPUID result cache to minimise latency on frequent CPUID exits
+#[derive(Clone, Copy, Default)]
+struct CpuidEntry { valid: bool, eax: u32, ebx: u32, ecx: u32, edx: u32 }
+
+// 256 leaves × 1 subleaf (0) – enough for typical guest usage
+static CPUID_CACHE: SpinMutex<[CpuidEntry; 256]> = SpinMutex::new([CpuidEntry { valid: false, eax:0, ebx:0, ecx:0, edx:0 }; 256]);
+
+#[inline]
+fn cached_cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
+    if subleaf == 0 && leaf < 256 {
+        let mut cache = CPUID_CACHE.lock();
+        let entry = &mut cache[leaf as usize];
+        if !entry.valid {
+            let res = unsafe { core::arch::x86_64::__cpuid_count(leaf, subleaf) };
+            *entry = CpuidEntry { valid: true, eax: res.eax, ebx: res.ebx, ecx: res.ecx, edx: res.edx };
+        }
+        return (entry.eax, entry.ebx, entry.ecx, entry.edx);
+    }
+    let res = unsafe { core::arch::x86_64::__cpuid_count(leaf, subleaf) };
+    (res.eax, res.ebx, res.ecx, res.edx)
+}
+
 use spin::Mutex;
 
 use crate::cpu::Cpu;
@@ -275,16 +299,16 @@ impl VirtualizationEngine for VmxEngine {
         match reason {
             VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
             VmExitReason::Cpuid { leaf, subleaf } => {
-                // Execute host CPUID and inject results back to guest RAX/RBX/RCX/RDX
-                let res = unsafe { core::arch::x86_64::__cpuid_count(leaf, subleaf) };
+                // Fast-path using host CPUID cache
+                let (eax, ebx, ecx, edx) = cached_cpuid(leaf, subleaf);
                 let mut vms = VMS.lock();
                 if let Some(vm) = vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == _vcpu)) {
                     let vmcs = Vmcs::new(vm.vmcs_region);
                     if let Ok(mut act) = vmcs.load() {
-                        act.write(VmcsField::GUEST_RAX, res.eax as u64);
-                        act.write(VmcsField::GUEST_RBX, res.ebx as u64);
-                        act.write(VmcsField::GUEST_RCX, res.ecx as u64);
-                        act.write(VmcsField::GUEST_RDX, res.edx as u64);
+                        act.write(VmcsField::GUEST_RAX, eax as u64);
+                        act.write(VmcsField::GUEST_RBX, ebx as u64);
+                        act.write(VmcsField::GUEST_RCX, ecx as u64);
+                        act.write(VmcsField::GUEST_RDX, edx as u64);
                     }
                 }
                 Ok(VmExitAction::Continue)
