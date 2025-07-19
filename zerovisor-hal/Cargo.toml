@@ -1,0 +1,18 @@
+[package]
+name = "zerovisor-hal"
+version = "0.1.0"
+edition = "2021"
+description = "Hardware Abstraction Layer for Zerovisor"
+
+[dependencies]
+bitflags = { workspace = true }
+static_assertions = { workspace = true }
+spin = { workspace = true }
+x86_64 = { workspace = true }
+x86 = { workspace = true }
+
+# Architecture-specific optional dependencies
+
+
+[features]
+default = []

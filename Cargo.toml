@@ -21,17 +21,11 @@ sha2 = { version = "0.10", default-features = false }
 
 [features]
 default = []
-x86_64 = ["zerovisor-hal/x86_64", "zerovisor-x86_64"]
-arm64 = ["zerovisor-hal/arm64", "zerovisor-arm64"]
-riscv = ["zerovisor-hal/riscv", "zerovisor-riscv"]
 
 [workspace]
 members = [
     "zerovisor-core",
     "zerovisor-hal",
-    "zerovisor-x86_64",
-    "zerovisor-arm64", 
-    "zerovisor-riscv",
     "zerovisor-bootloader"
 ]
 
@@ -46,6 +40,7 @@ sha2 = { version = "0.10", default-features = false }
 x86_64 = "0.14"
 cortex-a = "8.1"
 riscv = "0.10"
+x86 = "0.52"
 
 [profile.release]
 panic = "abort"

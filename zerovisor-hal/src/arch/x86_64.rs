@@ -8,12 +8,12 @@
 #![cfg(target_arch = "x86_64")]
 #![allow(clippy::missing_safety_doc)]
 
-use core::{arch::x86_64::{__cpuid, __readmsr, __writemsr}, mem::MaybeUninit};
-use x86_64::registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags};
-use x86_64::registers::model_specific::{Efer, EferFlags};
-use x86_64::VirtAddr;
+use core::arch::x86_64::__cpuid;
+use x86::msr::{rdmsr, wrmsr};
+use x86_64::registers::control::{Cr4, Cr4Flags};
 
-use crate::cpu::{Cpu, CpuFeatures, CpuRegister, CpuState, PhysicalAddress, RegisterValue, VirtualAddress};
+use crate::cpu::{Cpu, CpuFeatures, CpuRegister, CpuState, PhysicalAddress, RegisterValue};
+use crate::cpu::Cpu as _; // bring trait into scope
 
 /// VMX basic leaf MSR (IA32_VMX_BASIC)
 const IA32_VMX_BASIC: u32 = 0x480;
@@ -52,12 +52,12 @@ pub struct X86Cpu {
 impl X86Cpu {
     /// Retrieve VMX capability revision from IA32_VMX_BASIC MSR
     fn vmx_revision_id() -> u32 {
-        unsafe { __readmsr(IA32_VMX_BASIC) as u32 }
+        unsafe { rdmsr(IA32_VMX_BASIC) as u32 }
     }
 
     /// Check if VMX is locked/enabled in IA32_FEATURE_CONTROL MSR
     fn feature_control_enabled() -> Result<(), X86CpuError> {
-        let fc = unsafe { __readmsr(IA32_FEATURE_CONTROL) };
+        let fc = unsafe { rdmsr(IA32_FEATURE_CONTROL) };
         let lock = fc & 0x1;
         let vmx_inside_smx = (fc >> 1) & 0x1;
         let vmx_outside_smx = (fc >> 2) & 0x1;
@@ -95,17 +95,14 @@ impl X86Cpu {
     }
 
     /// Execute the `vmxon` instruction with the supplied physical address.
-    unsafe fn vmxon(addr: PhysicalAddress) -> Result<(), X86CpuError> {
-        let mut rflags: u64;
-        core::arch::asm!(
-            "vmxon [{0}]",
-            in(reg) &addr,
-            out("rflags") rflags,
-            options(nostack, preserves_flags),
-        );
-        // CF or ZF set indicates failure (see Intel SDM 30.3.1)
-        if (rflags & (1 << 0)) != 0 || (rflags & (1 << 6)) != 0 {
-            return Err(X86CpuError::VmxEnableFailed);
+    fn vmxon(addr: PhysicalAddress) -> Result<(), X86CpuError> {
+        // SAFETY: execution of the VMXON instruction requires CPL0 and CR4.VMXE=1.
+        unsafe {
+            core::arch::asm!(
+                "vmxon [{0}]",
+                in(reg) addr,
+                options(nostack, preserves_flags),
+            );
         }
         Ok(())
     }
@@ -150,7 +147,7 @@ impl Cpu for X86Cpu {
 
         // 3. Execute VMXON
         let phys_addr = unsafe { &VMXON_REGION as *const _ as PhysicalAddress };
-        unsafe { Self::vmxon(phys_addr)? };
+        Self::vmxon(phys_addr)?;
 
         Ok(())
     }

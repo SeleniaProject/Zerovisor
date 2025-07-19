@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Virtualization engine abstraction layer
 
 use bitflags::bitflags;
@@ -311,7 +313,7 @@ pub mod arch {
     use super::*;
     
     /// x86_64 VMX (Intel VT-x) implementation
-    #[cfg(feature = "x86_64")]
+    #[cfg(any(feature = "x86_64", target_arch = "x86_64"))]
     pub mod vmx {
         use super::*;
         
