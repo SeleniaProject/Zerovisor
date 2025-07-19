@@ -116,7 +116,6 @@ impl VirtualizationEngine for VmxEngine {
 
         // Allocate via BootManager memory allocator (simplified path – assume
         // identity mapping and 4-KiB pages so physical == virtual).
-        use crate::memory::MemoryFlags as MF;
         let vmcs_phys = unsafe {
             // Reserve a 4-KiB page from a simple bump allocator (aligned). For
             // demonstration we use a static mutable array.

@@ -145,7 +145,6 @@ pub enum TimerEvent {
 
 /// Architecture-specific timer implementations
 pub mod arch {
-    use super::*;
     
     /// x86_64 specific timer features
     #[cfg(target_arch = "x86_64")]

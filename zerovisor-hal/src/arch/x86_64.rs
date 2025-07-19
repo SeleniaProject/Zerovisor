@@ -9,7 +9,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use core::arch::x86_64::__cpuid;
-use x86::msr::{rdmsr, wrmsr};
+use x86::msr::rdmsr;
 use x86_64::registers::control::{Cr4, Cr4Flags};
 
 use crate::cpu::{Cpu, CpuFeatures, CpuRegister, CpuState, PhysicalAddress, RegisterValue};
