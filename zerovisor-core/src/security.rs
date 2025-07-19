@@ -27,6 +27,11 @@ pub enum SecurityEvent {
         deadline_ns: u64,
         now_ns: u64,
     },
+    /// Interrupt latency exceeded 1 microsecond target.
+    InterruptLatencyViolation {
+        vector: u8,
+        latency_ns: u64,
+    },
     // Future event types will follow here.
 }
 
