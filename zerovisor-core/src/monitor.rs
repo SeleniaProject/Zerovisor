@@ -19,6 +19,7 @@ static mut METRICS_PAGE: MetricsPage = MetricsPage(PerformanceMetrics {
     total_exit_time_ns: 0,
     avg_exit_latency_ns: 0,
     running_vms: 0,
+    shared_pages: 0,
     timestamp_ns: 0,
 });
 
@@ -28,12 +29,14 @@ pub struct PerformanceMetrics {
     pub total_exit_time_ns: u64,
     pub avg_exit_latency_ns: u64,
     pub running_vms: u64,
+    pub shared_pages: u64,
     pub timestamp_ns: u64,
 }
 
 static TOTAL_EXITS: AtomicU64 = AtomicU64::new(0);
 static TOTAL_EXIT_TIME_NS: AtomicU64 = AtomicU64::new(0);
 static RUNNING_VMS: AtomicU64 = AtomicU64::new(0);
+static SHARED_PAGES: AtomicU64 = AtomicU64::new(0);
 
 #[inline]
 pub fn record_vmexit(latency_ns: u64) {
@@ -55,6 +58,7 @@ pub fn record_vmexit(latency_ns: u64) {
             security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: METRICS_PAGE.0.avg_exit_latency_ns });
         }
         METRICS_PAGE.0.timestamp_ns = crate::scheduler::cycles_to_nanoseconds(crate::scheduler::get_cycle_counter());
+        METRICS_PAGE.0.shared_pages = SHARED_PAGES.load(Ordering::Relaxed);
     }
 }
 
@@ -83,6 +87,17 @@ pub fn collect() -> PerformanceMetrics {
         total_exit_time_ns: exit_time,
         avg_exit_latency_ns: avg,
         running_vms: RUNNING_VMS.load(Ordering::Relaxed),
+        shared_pages: SHARED_PAGES.load(Ordering::Relaxed),
         timestamp_ns: crate::scheduler::cycles_to_nanoseconds(crate::scheduler::get_cycle_counter()),
     }
+}
+
+/// Increment shared page count when a guest‐visible DMA buffer is mapped.
+pub fn add_shared_pages(count: u64) {
+    SHARED_PAGES.fetch_add(count, Ordering::Relaxed);
+}
+
+/// Decrement shared page count when a buffer is unmapped.
+pub fn remove_shared_pages(count: u64) {
+    SHARED_PAGES.fetch_sub(count, Ordering::Relaxed);
 } 

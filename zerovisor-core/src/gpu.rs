@@ -48,6 +48,24 @@ pub fn assign_gpu(vm: VmHandle, cfg: &GpuConfig) -> Result<GpuHandle, GpuError> 
     Ok(handle)
 }
 
+/// Map shared DMA buffer into guest and record shared page count.
+pub fn map_guest_dma(vm: VmHandle, gpu: GpuHandle, guest_pa: u64, size: usize) -> Result<(), GpuError> {
+    let mgr = unsafe { GPU_MANAGER.as_ref().ok_or(GpuError::InitializationFailed)? };
+    let mut eng = mgr.engine.lock();
+    eng.map_guest_memory(gpu, guest_pa, size)?;
+
+    crate::monitor::add_shared_pages((size as u64 + 0xFFF) / 0x1000);
+    Ok(())
+}
+
+pub fn unmap_guest_dma(vm: VmHandle, gpu: GpuHandle, guest_pa: u64, size: usize) -> Result<(), GpuError> {
+    let mgr = unsafe { GPU_MANAGER.as_ref().ok_or(GpuError::InitializationFailed)? };
+    let mut eng = mgr.engine.lock();
+    eng.unmap_guest_memory(gpu, guest_pa, size)?;
+    crate::monitor::remove_shared_pages((size as u64 + 0xFFF) / 0x1000);
+    Ok(())
+}
+
 /// GPU VF を解放
 pub fn release_gpu(vm: VmHandle, handle: GpuHandle) -> Result<(), GpuError> {
     let mgr = unsafe { GPU_MANAGER.as_ref().ok_or(GpuError::InitializationFailed)? };
