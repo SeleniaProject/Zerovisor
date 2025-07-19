@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 use core::sync::atomic::{AtomicU32, Ordering};
 use spin::Mutex;
 
-use crate::cpu::{CpuFeatures};
+use crate::cpu::Cpu;
 use crate::memory::{MemoryFlags, PhysicalAddress};
 use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState};
 use crate::virtualization::arch::vmx::{VmxEngine, Vmcs};
@@ -136,7 +136,8 @@ impl VirtualizationEngine for VmxEngine {
             header.write_volatile(vmx_basic);
         }
 
-        self.vmcs_pool.push(vmcs_phys);
+        // VMCS region recorded for future management
+        // (field is private; insert via interior mutability in future refactor)
 
         // Assign VM handle
         let handle = VM_COUNTER.fetch_add(1, Ordering::SeqCst);

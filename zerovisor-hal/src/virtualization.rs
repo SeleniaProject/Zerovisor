@@ -1,6 +1,6 @@
-#![allow(dead_code)]
-
 //! Virtualization engine abstraction layer
+
+#![allow(dead_code)]
 
 use bitflags::bitflags;
 use crate::cpu::CpuState;
@@ -313,15 +313,17 @@ pub mod arch {
     use super::*;
     
     /// x86_64 VMX (Intel VT-x) implementation
-    #[cfg(any(feature = "x86_64", target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86_64")]
     pub mod vmx {
         use super::*;
+        extern crate alloc;
+        use alloc::vec::Vec;
         
         /// VMX virtualization engine
         pub struct VmxEngine {
-            vmxon_region: PhysicalAddress,
-            vmcs_pool: Vec<PhysicalAddress>,
-            ept_tables: Vec<PhysicalAddress>,
+            pub vmxon_region: PhysicalAddress,
+            pub vmcs_pool: Vec<PhysicalAddress>,
+            pub ept_tables: Vec<PhysicalAddress>,
         }
         
         /// VMCS (Virtual Machine Control Structure)
@@ -334,7 +336,7 @@ pub mod arch {
     }
     
     /// x86_64 SVM (AMD-V) implementation
-    #[cfg(feature = "x86_64")]
+    #[cfg(target_arch = "x86_64")]
     pub mod svm {
         use super::*;
         
@@ -352,7 +354,7 @@ pub mod arch {
     }
     
     /// ARM64 virtualization implementation
-    #[cfg(feature = "arm64")]
+    #[cfg(target_arch = "aarch64")]
     pub mod arm64 {
         use super::*;
         
@@ -363,7 +365,7 @@ pub mod arch {
     }
     
     /// RISC-V H-extension implementation
-    #[cfg(feature = "riscv")]
+    #[cfg(target_arch = "riscv64")]
     pub mod riscv {
         use super::*;
         

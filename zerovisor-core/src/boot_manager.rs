@@ -20,6 +20,7 @@
 #![allow(dead_code)]
 
 use zerovisor_hal::{self as hal, cpu::CpuFeatures, memory::MemoryRegion};
+use zerovisor_hal::Cpu;
 
 /// Hardware verification/initialization errors
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
