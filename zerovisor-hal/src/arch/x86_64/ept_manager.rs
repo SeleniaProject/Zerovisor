@@ -50,6 +50,33 @@ impl EptHierarchy {
         }
 
         let pages = size / 0x1000;
+        // Try huge page mappings first when alignment and size allow.
+        const SZ_2M: u64 = 2 * 1024 * 1024;
+        const SZ_1G: u64 = 1024 * 1024 * 1024;
+
+        // 1 GiB pages
+        if size >= SZ_1G && gpa % SZ_1G == 0 && hpa % SZ_1G == 0 && size % SZ_1G == 0 {
+            let entries = size / SZ_1G;
+            for i in 0..entries {
+                let cur_gpa = gpa + i * SZ_1G;
+                let cur_hpa = hpa + i * SZ_1G;
+                self.map_single_1g(cur_gpa, cur_hpa, flags | EptFlags::HUGE)?;
+            }
+            return Ok(());
+        }
+
+        // 2 MiB pages
+        if size >= SZ_2M && gpa % SZ_2M == 0 && hpa % SZ_2M == 0 && size % SZ_2M == 0 {
+            let entries = size / SZ_2M;
+            for i in 0..entries {
+                let cur_gpa = gpa + i * SZ_2M;
+                let cur_hpa = hpa + i * SZ_2M;
+                self.map_single_2m(cur_gpa, cur_hpa, flags | EptFlags::HUGE)?;
+            }
+            return Ok(());
+        }
+
+        // Fallback to 4 KiB pages
         for i in 0..pages {
             let cur_gpa = gpa + i * 0x1000;
             let cur_hpa = hpa + i * 0x1000;
@@ -98,6 +125,58 @@ impl EptHierarchy {
             pt.set_entry(pt_idx, hpa, flags | EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC);
         }
 
+        Ok(())
+    }
+
+    /// Map a single 1 GiB page (PDPT level).
+    fn map_single_1g(&mut self, gpa: u64, hpa: u64, flags: EptFlags) -> Result<(), EptError> {
+        let pml4_idx = ((gpa >> 39) & 0x1FF) as usize;
+        let pdpt_idx = ((gpa >> 30) & 0x1FF) as usize;
+
+        unsafe {
+            let pml4 = &mut *self.pml4.as_ptr();
+            let mut pdpt_phys = pml4.entry(pml4_idx) & 0x000F_FFFF_FFFF_F000;
+            if pdpt_phys == 0 {
+                pdpt_phys = Self::alloc_table()?.as_phys();
+                pml4.set_entry(pml4_idx, pdpt_phys, EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC);
+            }
+
+            let pdpt = &mut *(pdpt_phys as *mut EptTable);
+            if pdpt.entry(pdpt_idx) & 1 != 0 {
+                return Err(EptError::AlreadyMapped);
+            }
+            pdpt.set_entry(pdpt_idx, hpa, flags | EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC);
+        }
+        Ok(())
+    }
+
+    /// Map a single 2 MiB page (PD level).
+    fn map_single_2m(&mut self, gpa: u64, hpa: u64, flags: EptFlags) -> Result<(), EptError> {
+        let pml4_idx = ((gpa >> 39) & 0x1FF) as usize;
+        let pdpt_idx = ((gpa >> 30) & 0x1FF) as usize;
+        let pd_idx   = ((gpa >> 21) & 0x1FF) as usize;
+
+        unsafe {
+            let pml4 = &mut *self.pml4.as_ptr();
+            let mut pdpt_phys = pml4.entry(pml4_idx) & 0x000F_FFFF_FFFF_F000;
+            if pdpt_phys == 0 {
+                pdpt_phys = Self::alloc_table()?.as_phys();
+                pml4.set_entry(pml4_idx, pdpt_phys, EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC);
+            }
+
+            let pdpt = &mut *(pdpt_phys as *mut EptTable);
+            let mut pd_phys = pdpt.entry(pdpt_idx) & 0x000F_FFFF_FFFF_F000;
+            if pd_phys == 0 {
+                pd_phys = Self::alloc_table()?.as_phys();
+                pdpt.set_entry(pdpt_idx, pd_phys, EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC);
+            }
+
+            let pd = &mut *(pd_phys as *mut EptTable);
+            if pd.entry(pd_idx) & 1 != 0 {
+                return Err(EptError::AlreadyMapped);
+            }
+            pd.set_entry(pd_idx, hpa, flags | EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC);
+        }
         Ok(())
     }
 
