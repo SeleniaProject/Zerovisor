@@ -11,6 +11,7 @@ pub mod memory;
 pub mod interrupts;
 pub mod timer;
 pub mod virtualization;
+pub mod cycles;
 pub mod arch; // New architecture-specific module tree
 
 // Re-export core traits

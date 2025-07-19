@@ -21,6 +21,7 @@ use super::vmcs::{Vmcs, VmcsError};
 use crate::ArchCpu;
 use super::ept::build_identity_ept;
 use super::vmcs::VmcsField;
+use crate::cycles::rdtsc;
 
 /// Error type used by the VMX engine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -212,7 +213,12 @@ impl VirtualizationEngine for VmxEngine {
 
         unsafe { Self::vmlaunch()? };
         // For demo, immediately treat as HLT exit
-        Ok(VmExitReason::Hlt)
+        let start = rdtsc();
+        let exit_reason = VmExitReason::Hlt; // placeholder; would be read from VMCS exit reason field
+        let end = rdtsc();
+        let _latency = end - start;
+        // TODO: store latency stats
+        Ok(exit_reason)
     }
 
     fn get_vcpu_state(&self, _vcpu: VcpuHandle) -> Result<CpuState, Self::Error> {
