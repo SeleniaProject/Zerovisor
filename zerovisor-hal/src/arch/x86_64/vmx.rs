@@ -19,6 +19,7 @@ use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitRe
 use crate::virtualization::arch::vmx::VmxEngine;
 use super::vmcs::{Vmcs, VmcsError};
 use crate::ArchCpu;
+use super::ept::build_identity_ept;
 
 /// Error type used by the VMX engine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,7 +207,13 @@ impl VirtualizationEngine for VmxEngine {
     }
 
     fn setup_nested_paging(&mut self, _vm: VmHandle) -> Result<(), Self::Error> {
-        // Placeholder – will allocate EPT/NPT tables in a later task
+        let ept_pml4 = build_identity_ept();
+        // In real code we would write EPT_POINTER VMCS field here
+        // Example (ignored errors):
+        // let vmcs = Vmcs::new(...);
+        // let mut active = vmcs.load()?;
+        // active.write(VmcsField::EPT_POINTER, ept_pml4 | (3 << 3));
+        self.ept_tables.push(ept_pml4);
         Ok(())
     }
 
