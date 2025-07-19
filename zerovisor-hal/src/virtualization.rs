@@ -306,6 +306,24 @@ pub struct VmStats {
     
     /// Number of hypercalls
     pub hypercalls: u64,
+
+    // Internal accumulator for average calculation
+    total_latency_cycles: u128,
+}
+
+impl VmStats {
+    /// Record a single VMEXIT latency in cycles and update statistics.
+    pub fn record_exit(&mut self, reason_index: usize, latency_cycles: u64) {
+        self.total_exits += 1;
+        if reason_index < self.exit_counts.len() {
+            self.exit_counts[reason_index] += 1;
+        }
+        self.total_latency_cycles += latency_cycles as u128;
+        if latency_cycles > self.max_exit_latency_ns {
+            self.max_exit_latency_ns = latency_cycles;
+        }
+        self.avg_exit_latency_ns = (self.total_latency_cycles / self.total_exits as u128) as u64;
+    }
 }
 
 /// Architecture-specific virtualization implementations
