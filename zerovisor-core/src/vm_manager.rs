@@ -10,6 +10,7 @@ use zerovisor_hal::cpu::CpuFeatures;
 use zerovisor_hal::virtualization::{VmHandle, VmConfig, VcpuHandle, VcpuConfig, VmExitAction};
 use crate::scheduler::{self, register_vcpu, pick_next, quantum_expired, SchedEntity};
 use crate::{log, monitor};
+use crate::console;
 use crate::security::{self, SecurityEvent};
 // logging macro is imported via crate root
 
@@ -59,6 +60,8 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
     pub fn run(&self) -> ! {
         loop {
             if let Some(entity) = pick_next() {
+                // handle management console input
+                console::poll();
                 let _vm = entity.vm;
                 let vcpu = entity.vcpu;
                 // 実行
