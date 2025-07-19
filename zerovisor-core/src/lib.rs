@@ -17,6 +17,7 @@ pub mod log;
 pub mod monitor;
 pub mod boot_manager;
 pub mod vm_manager;
+pub mod api;
 
 use zerovisor_hal::{HalError, init as hal_init};
 
