@@ -28,6 +28,10 @@ pub enum VmcsField {
     HOST_CR4           = 0x6C04,
     HOST_RIP           = 0x6C16,
     EPT_POINTER        = 0x201A,
+    EXIT_REASON        = 0x4402,
+    EXIT_QUALIFICATION = 0x6400,
+    GUEST_LINEAR_ADDR  = 0x640A,
+    GUEST_PHYS_ADDR    = 0x2400,
 }
 
 /// Wrapper representing a loaded VMCS pointer.

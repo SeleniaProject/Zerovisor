@@ -18,10 +18,17 @@ use crate::memory::{MemoryFlags, PhysicalAddress};
 use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState};
 use crate::virtualization::arch::vmx::VmxEngine;
 use crate::arch::x86_64::vmcs::{Vmcs, VmcsError, VmcsField};
+use crate::arch::x86_64::vmcs::ActiveVmcs;
 use crate::arch::x86_64::ept::EptFlags;
 use crate::arch::x86_64::ept_manager::EptHierarchy;
 use crate::ArchCpu;
 use crate::cycles::rdtsc;
+
+/// Intel VMEXIT basic reason codes
+const EXIT_REASON_CPUID: u16 = 10;
+const EXIT_REASON_HLT: u16 = 12;
+const EXIT_REASON_IO_INSTRUCTION: u16 = 30;
+const EXIT_REASON_EPT_VIOLATION: u16 = 48;
 
 /// Error type used by the VMX engine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,12 +226,17 @@ impl VirtualizationEngine for VmxEngine {
 
         // ---------------------------------------------------------------
 
+        let start_cycle = rdtsc();
         unsafe { Self::vmlaunch()? };
-        // For demo, immediately treat as HLT exit
-        let start = rdtsc();
-        let exit_reason = VmExitReason::Hlt; // placeholder; would be read from VMCS exit reason field
-        let end = rdtsc();
-        let _latency = end - start;
+
+        // Read VMEXIT information
+        let reason_val = active.read(VmcsField::EXIT_REASON) as u16;
+        let qualification = active.read(VmcsField::EXIT_QUALIFICATION);
+
+        let exit_reason = Self::decode_exit_reason(reason_val, qualification, &active);
+
+        let end_cycle = rdtsc();
+        let _latency = end_cycle - start_cycle;
         // TODO: store latency stats
         Ok(exit_reason)
     }
@@ -242,8 +254,7 @@ impl VirtualizationEngine for VmxEngine {
             VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
             VmExitReason::Cpuid { leaf, subleaf } => {
                 // Simple CPUID emulation: expose host features directly
-                let r = unsafe { core::arch::x86_64::__cpuid_count(leaf, subleaf) };
-                // Inject results back into guest (skipped here)
+                let _ = (leaf, subleaf); // CPUID handling TODO
                 Ok(VmExitAction::Continue)
             }
             VmExitReason::IoInstruction { port, size, write } => {
@@ -293,6 +304,28 @@ impl VmxEngine {
             return Err(VmxError::LaunchFailed);
         }
         Ok(())
+    }
+
+    fn decode_exit_reason(reason: u16, qualification: u64, active: &ActiveVmcs) -> VmExitReason {
+        match reason {
+            EXIT_REASON_HLT => VmExitReason::Hlt,
+            EXIT_REASON_CPUID => {
+                // Extract leaf/subleaf from guest registers later
+                VmExitReason::Cpuid { leaf: 0, subleaf: 0 }
+            }
+            EXIT_REASON_IO_INSTRUCTION => {
+                let port = (qualification >> 16) as u16;
+                let size = ((qualification >> 0) & 7) as u8 + 1;
+                let write = ((qualification >> 3) & 1) != 0;
+                VmExitReason::IoInstruction { port, size, write }
+            }
+            EXIT_REASON_EPT_VIOLATION => {
+                let gpa = active.read(VmcsField::GUEST_PHYS_ADDR);
+                let gva = active.read(VmcsField::GUEST_LINEAR_ADDR);
+                VmExitReason::NestedPageFault { guest_phys: gpa, guest_virt: gva, error_code: qualification }
+            }
+            _ => VmExitReason::ArchSpecific(reason as u64),
+        }
     }
 }
 
