@@ -20,6 +20,7 @@ use crate::virtualization::arch::vmx::VmxEngine;
 use super::vmcs::{Vmcs, VmcsError};
 use crate::ArchCpu;
 use super::ept::build_identity_ept;
+use super::vmcs::VmcsField;
 
 /// Error type used by the VMX engine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,7 +186,30 @@ impl VirtualizationEngine for VmxEngine {
         let vmcs = Vmcs::new(vm.vmcs_region);
         vmcs.clear()?;
         let mut active = vmcs.load()?;
-        // TODO: set guest/host state fields here. For now, minimal required fields assumed preinitialised.
+
+        // Minimal guest/host state setup ---------------------------------
+        const CR0_PE: u64 = 1 << 0; // Protected mode enable
+        const CR0_PG: u64 = 1 << 31; // Paging enable
+        const CR4_VMXE: u64 = 1 << 13;
+
+        // Guest state
+        active.write(VmcsField::GUEST_CR0, CR0_PE | CR0_PG);
+        active.write(VmcsField::GUEST_CR3, 0x0);
+        active.write(VmcsField::GUEST_CR4, CR4_VMXE);
+        active.write(VmcsField::GUEST_RIP, 0x1000); // dummy guest entry
+        active.write(VmcsField::GUEST_RSP, 0x8000);
+
+        // Host state (use current values placeholder)
+        active.write(VmcsField::HOST_CR0, CR0_PE | CR0_PG);
+        active.write(VmcsField::HOST_CR3, 0x0);
+        active.write(VmcsField::HOST_CR4, CR4_VMXE);
+        active.write(VmcsField::HOST_RIP, run_host_resume as u64);
+
+        // EPT pointer (identity map)
+        active.write(VmcsField::EPT_POINTER, ept_pml4 | (3 << 3));
+
+        // ---------------------------------------------------------------
+
         unsafe { Self::vmlaunch()? };
         // For demo, immediately treat as HLT exit
         Ok(VmExitReason::Hlt)
@@ -242,4 +266,7 @@ impl VmxEngine {
         }
         Ok(())
     }
-} 
+}
+
+// Dummy host resume label
+extern "C" fn run_host_resume() {} 
