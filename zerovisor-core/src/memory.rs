@@ -244,9 +244,13 @@ impl PhysicalMemoryManager {
         let _node = topology.get_node(node_id)
             .ok_or(MemoryError::NumaNodeNotFound)?;
 
-        // For now, just allocate from the general pool
-        // In a real implementation, this would allocate from node-specific memory
-        self.allocate_pages(count, AllocFlags::NUMA_LOCAL)
+        // TODO: Implement real per-node allocator; fallback records miss metric
+        let res = self.allocate_pages(count, AllocFlags::NUMA_LOCAL);
+        if res.is_err() {
+            crate::monitor::add_numa_miss();
+            // Fallback to global allocator (already attempted)
+        }
+        res
     }
 
     /// Zero memory region
