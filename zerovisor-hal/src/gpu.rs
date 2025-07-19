@@ -21,7 +21,7 @@ pub enum GpuError {
 }
 
 /// Identifier for a physical GPU device (e.g., PCI BDF on x86)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GpuDeviceId {
     pub bus: u8,
     pub device: u8,

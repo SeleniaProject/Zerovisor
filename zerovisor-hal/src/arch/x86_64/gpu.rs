@@ -4,6 +4,7 @@
 
 extern crate alloc;
 use alloc::vec::Vec;
+use alloc::collections::BTreeMap;
 
 use crate::memory::PhysicalAddress;
 use crate::gpu::*;
@@ -12,6 +13,7 @@ use super::pci;
 pub struct SrIovGpuEngine {
     devices: Vec<GpuDeviceId>,
     next_handle: GpuHandle,
+    mig_usage: BTreeMap<GpuDeviceId, u8>, // number of allocated MIG slices per device
 }
 
 impl GpuVirtualization for SrIovGpuEngine {
@@ -36,7 +38,7 @@ impl GpuVirtualization for SrIovGpuEngine {
 
         if devs.is_empty() { return Err(GpuError::NotSupported); }
 
-        Ok(Self { devices: devs, next_handle: 1 })
+        Ok(Self { devices: devs, next_handle: 1, mig_usage: BTreeMap::new() })
     }
 
     fn is_supported() -> bool { true }
@@ -44,13 +46,21 @@ impl GpuVirtualization for SrIovGpuEngine {
     fn list_devices(&self) -> Vec<GpuDeviceId> { self.devices.clone() }
 
     fn create_vf(&mut self, cfg: &GpuConfig) -> Result<GpuHandle, GpuError> {
+        // Validate device exists
+        if !self.devices.contains(&cfg.device) { return Err(GpuError::InvalidParameter); }
+
+        // MIG handling
+        if cfg.features.contains(GpuVirtFeatures::MIG) {
+            let entry = self.mig_usage.entry(cfg.device).or_insert(0);
+            if *entry >= 7 { return Err(GpuError::OutOfResources); }
+            *entry += 1;
+        }
+
         let h = self.next_handle;
         self.next_handle += 1;
 
-        // Placeholder: assume BAR0 size 16 MiB starting at 0xC0000000 + vf_index*0x1000000.
+        // Placeholder BAR mapping remains same
         let _bar_pa = 0xC000_0000 + (cfg.vf_index as u64) * 0x0100_0000;
-        // Identity map into guest via EPT (requires EptHierarchy access; omitted for now).
-        // This will be wired once the VM handle is passed in.
 
         Ok(h)
     }
