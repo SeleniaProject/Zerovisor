@@ -15,7 +15,7 @@ use spin::Mutex;
 
 use crate::cpu::Cpu;
 use crate::memory::{MemoryFlags, PhysicalAddress};
-use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState};
+use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState, VmStats};
 use crate::virtualization::arch::vmx::VmxEngine;
 use crate::arch::x86_64::vmcs::{Vmcs, VmcsError, VmcsField};
 use crate::arch::x86_64::vmcs::ActiveVmcs;
@@ -64,6 +64,7 @@ struct Vm {
     vmcs_region: PhysicalAddress,
     ept: EptHierarchy,
     vcpus: Vec<Vcpu>,
+    stats: VmStats,
 }
 
 /// Internal per-VCPU representation
@@ -169,6 +170,7 @@ impl VirtualizationEngine for VmxEngine {
             vmcs_region: vmcs_phys,
             ept: EptHierarchy::new().map_err(|_| VmxError::EptSetupFailed)?,
             vcpus: Vec::new(),
+            stats: VmStats::default(),
         });
 
         Ok(handle)
@@ -236,8 +238,12 @@ impl VirtualizationEngine for VmxEngine {
         let exit_reason = Self::decode_exit_reason(reason_val, qualification, &active);
 
         let end_cycle = rdtsc();
-        let _latency = end_cycle - start_cycle;
-        // TODO: store latency stats
+        let latency = end_cycle - start_cycle;
+        // update stats
+        let mut vms_mut = VMS.lock();
+        if let Some(vm_stat) = vms_mut.iter_mut().find(|v| v.vcpus.iter().any(|c| c.handle == vcpu)) {
+            vm_stat.stats.record_exit(reason_val as usize, latency as u64);
+        }
         Ok(exit_reason)
     }
 
@@ -253,14 +259,35 @@ impl VirtualizationEngine for VmxEngine {
         match reason {
             VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
             VmExitReason::Cpuid { leaf, subleaf } => {
-                // Simple CPUID emulation: expose host features directly
-                let _ = (leaf, subleaf); // CPUID handling TODO
+                // Execute host CPUID and inject results back to guest RAX/RBX/RCX/RDX
+                let res = unsafe { core::arch::x86_64::__cpuid_count(leaf, subleaf) };
+                let mut vms = VMS.lock();
+                if let Some(vm) = vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == _vcpu)) {
+                    let vmcs = Vmcs::new(vm.vmcs_region);
+                    if let Ok(mut act) = vmcs.load() {
+                        act.write(VmcsField::GUEST_RAX, res.eax as u64);
+                        act.write(VmcsField::GUEST_RBX, res.ebx as u64);
+                        act.write(VmcsField::GUEST_RCX, res.ecx as u64);
+                        act.write(VmcsField::GUEST_RDX, res.edx as u64);
+                    }
+                }
                 Ok(VmExitAction::Continue)
             }
             VmExitReason::IoInstruction { port, size, write } => {
                 // For demo, treat as unhandled and emulate success
                 let _ = (port, size, write);
                 Ok(VmExitAction::Emulate)
+            }
+            VmExitReason::NestedPageFault { guest_phys, .. } => {
+                // Simple identity map 4 KiB page
+                let vm_id = {
+                    let vms = VMS.lock();
+                    vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == _vcpu)).map(|v| v.handle)
+                };
+                if let Some(id) = vm_id {
+                    self.map_guest_memory(id, guest_phys, guest_phys, 0x1000, MemoryFlags::empty())?;
+                }
+                Ok(VmExitAction::Continue)
             }
             _ => Ok(VmExitAction::Emulate),
         }

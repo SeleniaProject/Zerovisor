@@ -80,8 +80,9 @@ pub struct BootManager {
 }
 
 impl BootManager {
-    /// Perform *all* early initialization.
-    pub fn initialize(memory_map: &'static [MemoryRegion]) -> Result<Self, BootError> {
+    /// `memory_ptr` – physical pointer to array of HAL `MemoryRegion`
+    /// `entries` – number of entries in the array
+    pub fn initialize(memory_ptr: *const MemoryRegion, entries: usize) -> Result<Self, BootError> {
         // 1. Initialize the HAL – detects architecture and basic CPU features.
         hal::init().map_err(|_| BootError::HalInitFailure)?;
 
@@ -101,12 +102,15 @@ impl BootManager {
         let security_state = Self::establish_root_of_trust()?;
 
         // 6. Validate memory map
-        if memory_map.is_empty() {
+        if entries == 0 {
             return Err(BootError::InvalidMemoryMap);
         }
 
+        // SAFETY: Bootloader guarantees pointer/length validity & static lifetime.
+        let map_slice = unsafe { core::slice::from_raw_parts(memory_ptr, entries) };
+
         Ok(Self {
-            memory_map,
+            memory_map: map_slice,
             cpu_features: cpu.features(),
             security_state,
         })
