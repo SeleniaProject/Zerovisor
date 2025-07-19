@@ -20,6 +20,8 @@
 #![allow(dead_code)]
 
 use zerovisor_hal::{self as hal, cpu::CpuFeatures, memory::MemoryRegion};
+use zerovisor_hal::PhysicalAddress;
+use crate::monitor;
 use zerovisor_hal::Cpu;
 
 /// Hardware verification/initialization errors
@@ -77,6 +79,9 @@ pub struct BootManager {
     cpu_features: CpuFeatures,
     /// Current security state
     security_state: SecurityState,
+
+    /// Physical address of the metrics MMIO page
+    metrics_page: PhysicalAddress,
 }
 
 impl BootManager {
@@ -113,6 +118,7 @@ impl BootManager {
             memory_map: map_slice,
             cpu_features: cpu.features(),
             security_state,
+            metrics_page: monitor::metrics_mmio_ptr() as PhysicalAddress,
         })
     }
 
@@ -168,5 +174,10 @@ impl BootManager {
     /// Return the security state
     pub fn security_state(&self) -> SecurityState {
         self.security_state
+    }
+
+    /// Return physical address of metrics MMIO page
+    pub fn metrics_phys_addr(&self) -> PhysicalAddress {
+        self.metrics_page
     }
 } 
