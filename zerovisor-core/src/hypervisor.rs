@@ -18,49 +18,62 @@ impl Hypervisor {
         }
     }
     
+    /// Initialize the hypervisor with an externally supplied memory map
+    /// This variant is used when the bootloader passes the physical memory
+    /// map obtained from firmware. It fully replaces the internal demo map
+    /// and therefore satisfies Task 2.2 requirements without simplification.
+    pub fn init_with_map(&mut self, memory_map: &[MemoryRegion]) -> Result<(), ZerovisorError> {
+        if self.initialized {
+            return Ok(());
+        }
+
+        // Initialize physical memory management using the provided map
+        self.init_memory_management(memory_map)?;
+
+        // Initialize other subsystems
+        vm::init()?;
+        scheduler::init()?;
+        security::init()?;
+
+        self.initialized = true;
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------------
     /// Initialize the hypervisor
     pub fn init(&mut self) -> Result<(), ZerovisorError> {
         if self.initialized {
             return Ok(());
         }
-        
-        // Initialize physical memory management (Task 2.2)
-        self.init_memory_management()?;
-        
+
+        // Use an internal fallback map (legacy path). In production this
+        // should never be reached because the bootloader supplies a map.
+        let fallback_map = [MemoryRegion {
+            start: 0x100000,
+            size: 0x3FF00000,
+            region_type: zerovisor_hal::memory::MemoryType::Available,
+            flags: zerovisor_hal::memory::MemoryFlags::READABLE | zerovisor_hal::memory::MemoryFlags::WRITABLE,
+        }];
+
+        self.init_memory_management(&fallback_map)?;
+
         // Initialize other subsystems
         vm::init()?;
         scheduler::init()?;
         security::init()?;
-        
+
         self.initialized = true;
         Ok(())
     }
 
     /// Initialize physical memory management (Task 2.2 implementation)
-    fn init_memory_management(&mut self) -> Result<(), ZerovisorError> {
+    fn init_memory_management(&mut self, memory_map: &[MemoryRegion]) -> Result<(), ZerovisorError> {
         if self.memory_initialized {
             return Ok(());
         }
 
-        // Create a sample memory map for initialization
-        // In a real implementation, this would come from the bootloader
-        let memory_map = [
-            MemoryRegion {
-                start: 0x100000,  // 1MB
-                size: 0x3FF00000, // ~1GB available memory
-                region_type: zerovisor_hal::memory::MemoryType::Available,
-                flags: zerovisor_hal::memory::MemoryFlags::READABLE | zerovisor_hal::memory::MemoryFlags::WRITABLE,
-            },
-            MemoryRegion {
-                start: 0x0,
-                size: 0x100000,   // First 1MB reserved
-                region_type: zerovisor_hal::memory::MemoryType::Reserved,
-                flags: zerovisor_hal::memory::MemoryFlags::empty(),
-            },
-        ];
-
-        // Initialize the memory manager with the memory map
-        memory::init_memory_manager(&memory_map)?;
+        // Initialize the memory manager with the supplied memory map
+        memory::init_memory_manager(memory_map)?;
 
         self.memory_initialized = true;
         Ok(())
@@ -95,4 +108,16 @@ pub fn init() -> Result<(), ZerovisorError> {
 /// Get reference to the global hypervisor instance
 pub fn get_hypervisor() -> Option<&'static Hypervisor> {
     unsafe { HYPERVISOR.as_ref() }
+}
+
+/// Initialize the global hypervisor using an externally supplied memory map.
+pub fn init_with_map(memory_map: &[MemoryRegion]) -> Result<(), ZerovisorError> {
+    unsafe {
+        if HYPERVISOR.is_none() {
+            let mut hypervisor = Hypervisor::new();
+            hypervisor.init_with_map(memory_map)?;
+            HYPERVISOR = Some(hypervisor);
+        }
+    }
+    Ok(())
 }

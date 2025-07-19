@@ -29,6 +29,17 @@ pub fn init() -> Result<(), ZerovisorError> {
     Ok(())
 }
 
+/// Initialize Zerovisor using the firmware-provided memory map
+pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) -> Result<(), ZerovisorError> {
+    // Initialize the Hardware Abstraction Layer (idempotent)
+    hal_init().map_err(ZerovisorError::HalError)?;
+
+    // Initialize hypervisor with actual memory map
+    hypervisor::init_with_map(memory_map)?;
+
+    Ok(())
+}
+
 /// Zerovisor core error types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ZerovisorError {
