@@ -25,7 +25,8 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 use core::cmp;
 use spin::Mutex;
 
-use zerovisor_hal::memory::{self, AllocFlags, MemoryFlags, PhysicalAddress};
+use zerovisor_hal::memory::{self, PhysicalAddress};
+use crate::memory::AllocFlags;
 use zerovisor_hal::virtualization::*;
 use zerovisor_hal::HalError;
 use crate::memory as hv_mem;
@@ -58,7 +59,7 @@ impl From<hv_mem::MemoryError> for VmError { fn from(e: hv_mem::MemoryError) -> 
 impl From<VmError> for ZerovisorError {
     fn from(err: VmError) -> Self {
         match err {
-            VmError::Hal(_) => ZerovisorError::HalError(HalError::Unknown),
+            VmError::Hal(e) => ZerovisorError::HalError(e),
             VmError::Memory(_) | VmError::ResourceExhausted => ZerovisorError::ResourceExhausted,
             _ => ZerovisorError::InvalidConfiguration,
         }
