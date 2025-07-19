@@ -17,7 +17,7 @@ zerovisor-hal = { path = "zerovisor-hal" }
 zerovisor-x86_64 = { path = "zerovisor-x86_64", optional = true }
 zerovisor-arm64 = { path = "zerovisor-arm64", optional = true }
 zerovisor-riscv = { path = "zerovisor-riscv", optional = true }
-sha2 = { version = "0.10", default-features = false, features = ["alloc"] } // Cryptographic hashing for root-of-trust
+sha2 = { version = "0.10", default-features = false }
 
 [features]
 default = []
@@ -40,6 +40,7 @@ members = [
 spin = "0.9"
 bitflags = "2.4"
 static_assertions = "1.1"
+sha2 = { version = "0.10", default-features = false }
 
 # Architecture-specific dependencies
 x86_64 = "0.14"
