@@ -21,6 +21,7 @@ pub mod api;
 pub mod console;
 pub mod gpu;
 pub mod crypto;
+pub mod crypto_mem;
 
 use zerovisor_hal::{HalError, init as hal_init};
 
