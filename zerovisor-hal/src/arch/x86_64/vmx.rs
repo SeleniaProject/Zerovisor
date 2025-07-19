@@ -46,6 +46,7 @@ use crate::arch::x86_64::ept::EptFlags;
 use crate::arch::x86_64::ept_manager::EptHierarchy;
 use crate::ArchCpu;
 use crate::cycles::rdtsc;
+use super::vmexit_fast::{HANDLERS, FastHandler};
 
 /// Intel VMEXIT basic reason codes
 const EXIT_REASON_CPUID: u16 = 10;
@@ -295,14 +296,40 @@ impl VirtualizationEngine for VmxEngine {
         Ok(())
     }
 
-    fn handle_vm_exit(&mut self, _vcpu: VcpuHandle, reason: VmExitReason) -> Result<VmExitAction, Self::Error> {
+    fn handle_vm_exit(&mut self, vcpu: VcpuHandle, reason: VmExitReason) -> Result<VmExitAction, Self::Error> {
+        // Attempt fast-path dispatch first.
+        if let VmExitReason::ArchSpecific(raw) = reason {
+            let idx = raw as usize;
+            if idx < HANDLERS.len() {
+                if let Some(func) = HANDLERS[idx] {
+                    // Locate VMCS for this VCPU quickly.
+                    if let Some(vmcs_phys) = {
+                        let vms = VMS.lock();
+                        vms.iter()
+                            .find(|vm| vm.vcpus.iter().any(|c| c.handle == vcpu))
+                            .and_then(|vm| vm.vcpus.iter().find(|c| c.handle == vcpu))
+                            .map(|vcpu| vcpu.vmcs_region)
+                    } {
+                        let vmcs = Vmcs::new(vmcs_phys);
+                        if let Ok(mut act) = vmcs.load() {
+                            return func(self, vcpu, &mut act);
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback to existing slow handler path.
+        self.handle_vm_exit_slow(vcpu, reason)
+    }
+
+    /// Slow/legacy VMEXIT handler (keeps previous match logic).
+    pub fn handle_vm_exit_slow(&mut self, vcpu: VcpuHandle, reason: VmExitReason) -> Result<VmExitAction, Self::Error> {
         match reason {
             VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
             VmExitReason::Cpuid { leaf, subleaf } => {
-                // Fast-path using host CPUID cache
                 let (eax, ebx, ecx, edx) = cached_cpuid(leaf, subleaf);
                 let mut vms = VMS.lock();
-                if let Some(vm) = vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == _vcpu)) {
+                if let Some(vm) = vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == vcpu)) {
                     let vmcs = Vmcs::new(vm.vmcs_region);
                     if let Ok(mut act) = vmcs.load() {
                         act.write(VmcsField::GUEST_RAX, eax as u64);
@@ -314,13 +341,13 @@ impl VirtualizationEngine for VmxEngine {
                 Ok(VmExitAction::Continue)
             }
             VmExitReason::IoInstruction { port, size, write } => {
-                // Emulate legacy COM1 (UART) to redirect guest output to hypervisor log.
+                // previous slow IO handling retained (trimmed for brevity)
                 if port == 0x3F8 {
                     let vmcs_ptr = {
                         let vms = VMS.lock();
                         vms.iter()
-                            .find(|v| v.vcpus.iter().any(|c| c.handle == _vcpu))
-                            .and_then(|vm| vm.vcpus.iter().find(|c| c.handle == _vcpu))
+                            .find(|v| v.vcpus.iter().any(|c| c.handle == vcpu))
+                            .and_then(|vm| vm.vcpus.iter().find(|c| c.handle == vcpu))
                             .map(|vcpu| vcpu.vmcs_region)
                     };
 
@@ -352,13 +379,12 @@ impl VirtualizationEngine for VmxEngine {
                 }
             }
             VmExitReason::NestedPageFault { guest_phys, .. } => {
-                // Simple identity map 4 KiB page
                 let vm_id = {
                     let vms = VMS.lock();
-                    vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == _vcpu)).map(|v| v.handle)
+                    vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == vcpu)).map(|v| v.handle)
                 };
                 if let Some(id) = vm_id {
-                    self.map_guest_memory(id, guest_phys, guest_phys, 0x1000, MemoryFlags::empty())?;
+                    self.map_guest_memory(id, guest_phys, guest_phys, 0x1000, crate::memory::MemoryFlags::empty())?;
                 }
                 Ok(VmExitAction::Continue)
             }
