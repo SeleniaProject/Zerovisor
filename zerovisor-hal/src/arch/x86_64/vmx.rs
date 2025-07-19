@@ -339,8 +339,9 @@ impl VmxEngine {
         match reason {
             EXIT_REASON_HLT => VmExitReason::Hlt,
             EXIT_REASON_CPUID => {
-                // Extract leaf/subleaf from guest registers later
-                VmExitReason::Cpuid { leaf: 0, subleaf: 0 }
+                let leaf  = active.read(VmcsField::GUEST_RAX) as u32;
+                let subleaf = active.read(VmcsField::GUEST_RCX) as u32;
+                VmExitReason::Cpuid { leaf, subleaf }
             }
             EXIT_REASON_IO_INSTRUCTION => {
                 let port = (qualification >> 16) as u16;
