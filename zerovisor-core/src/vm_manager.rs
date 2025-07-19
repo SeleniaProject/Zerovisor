@@ -7,7 +7,9 @@ use alloc::collections::BTreeMap;
 use spin::Mutex;
 use zerovisor_hal::{VirtualizationEngine, HalError};
 use zerovisor_hal::cpu::CpuFeatures;
-use zerovisor_hal::virtualization::{VmHandle, VmConfig, VcpuHandle, VcpuConfig};
+use zerovisor_hal::virtualization::{VmHandle, VmConfig, VcpuHandle, VcpuConfig, VmExitAction};
+use crate::scheduler::{self, register_vcpu, pick_next, quantum_expired, SchedEntity};
+// logging macro is imported via crate root
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VmState {
@@ -44,9 +46,46 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
             real_time_priority: None,
         };
         let vcpu = eng.create_vcpu(vm, &vcpu_cfg)?;
-        eng.run_vcpu(vcpu)?;
+        // スケジューラへ登録 (デフォルト優先度 128)。
+        register_vcpu(vm, vcpu, 128, None);
         self.states.lock().insert(vm, VmState::Running);
         Ok(())
+    }
+
+    /// システム全体のスケジューラループを駆動（ブート CPU で呼び出し）。
+    pub fn run(&self) -> ! {
+        loop {
+            if let Some(entity) = pick_next() {
+                let _vm = entity.vm;
+                let vcpu = entity.vcpu;
+                // 実行
+                let exit_reason = {
+                    let mut eng = self.engine.lock();
+                    eng.run_vcpu(vcpu)
+                };
+
+                match exit_reason {
+                    Ok(reason) => {
+                        crate::log!("VMEXIT reason {:?} on VCPU {}", reason, vcpu);
+                        let action = {
+                            let mut eng = self.engine.lock();
+                            eng.handle_vm_exit(vcpu, reason)
+                        };
+                        match action {
+                            Ok(VmExitAction::Continue) => quantum_expired(entity),
+                            Ok(VmExitAction::Shutdown) | Ok(VmExitAction::Reset) | Ok(VmExitAction::Suspend) => {
+                                // TODO: 状態更新
+                            }
+                            _ => quantum_expired(entity),
+                        }
+                    }
+                    Err(_) => {
+                        // ハンドルエラー後に量子終了処理
+                        quantum_expired(entity);
+                    }
+                }
+            }
+        }
     }
 
     pub fn stop_vm(&self, vm: VmHandle) {

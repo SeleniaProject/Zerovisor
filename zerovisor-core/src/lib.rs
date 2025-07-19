@@ -13,6 +13,7 @@ pub mod memory;
 pub mod vm;
 pub mod scheduler;
 pub mod security;
+pub mod log;
 pub mod boot_manager;
 pub mod vm_manager;
 
