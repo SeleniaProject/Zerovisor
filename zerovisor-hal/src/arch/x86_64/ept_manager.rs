@@ -43,6 +43,12 @@ impl EptHierarchy {
         self.map_internal(gpa, hpa, size, flags)
     }
 
+    /// Convenience wrapper to map an MMIO region (read/write, no exec).
+    /// Size must be page aligned.
+    pub fn map_mmio(&mut self, gpa: u64, hpa: u64, size: u64) -> Result<(), EptError> {
+        self.map_internal(gpa, hpa, size, EptFlags::READ | EptFlags::WRITE)
+    }
+
     /// Map a guest physical range to host physical range with given flags.
     /// size must be 4 KiB, 2 MiB or 1 GiB aligned.
     fn map_internal(&mut self, gpa: u64, hpa: u64, size: u64, flags: EptFlags) -> Result<(), EptError> {
@@ -54,38 +60,31 @@ impl EptHierarchy {
             return Err(EptError::InvalidAlignment);
         }
 
-        let pages = size / 0x1000;
-        // Try huge page mappings first when alignment and size allow.
+        const SZ_4K: u64 = 0x1000;
         const SZ_2M: u64 = 2 * 1024 * 1024;
         const SZ_1G: u64 = 1024 * 1024 * 1024;
 
-        // 1 GiB pages
-        if size >= SZ_1G && gpa % SZ_1G == 0 && hpa % SZ_1G == 0 && size % SZ_1G == 0 {
-            let entries = size / SZ_1G;
-            for i in 0..entries {
-                let cur_gpa = gpa + i * SZ_1G;
-                let cur_hpa = hpa + i * SZ_1G;
+        let mut remaining = size;
+        let mut cur_gpa = gpa;
+        let mut cur_hpa = hpa;
+
+        while remaining > 0 {
+            if remaining >= SZ_1G && cur_gpa % SZ_1G == 0 && cur_hpa % SZ_1G == 0 {
                 self.map_single_1g(cur_gpa, cur_hpa, flags | EptFlags::HUGE)?;
-            }
-            return Ok(());
-        }
-
-        // 2 MiB pages
-        if size >= SZ_2M && gpa % SZ_2M == 0 && hpa % SZ_2M == 0 && size % SZ_2M == 0 {
-            let entries = size / SZ_2M;
-            for i in 0..entries {
-                let cur_gpa = gpa + i * SZ_2M;
-                let cur_hpa = hpa + i * SZ_2M;
+                cur_gpa += SZ_1G;
+                cur_hpa += SZ_1G;
+                remaining -= SZ_1G;
+            } else if remaining >= SZ_2M && cur_gpa % SZ_2M == 0 && cur_hpa % SZ_2M == 0 {
                 self.map_single_2m(cur_gpa, cur_hpa, flags | EptFlags::HUGE)?;
+                cur_gpa += SZ_2M;
+                cur_hpa += SZ_2M;
+                remaining -= SZ_2M;
+            } else {
+                self.map_single_4k(cur_gpa, cur_hpa, flags)?;
+                cur_gpa += SZ_4K;
+                cur_hpa += SZ_4K;
+                remaining -= SZ_4K;
             }
-            return Ok(());
-        }
-
-        // Fallback to 4 KiB pages
-        for i in 0..pages {
-            let cur_gpa = gpa + i * 0x1000;
-            let cur_hpa = hpa + i * 0x1000;
-            self.map_single_4k(cur_gpa, cur_hpa, flags)?;
         }
         Ok(())
     }
