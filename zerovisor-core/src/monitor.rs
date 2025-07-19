@@ -4,6 +4,8 @@
 //! of each scheduling quantum and on VMEXIT.
 
 use core::sync::atomic::{AtomicU64, Ordering};
+use crate::ZerovisorError;
+use crate::security::{self, SecurityEvent};
 
 /// 4-KiB aligned memory page that mirrors `PerformanceMetrics` in real time.
 /// External monitoring agents can map this physical address to obtain
@@ -48,6 +50,10 @@ pub fn record_vmexit(latency_ns: u64) {
         } else {
             METRICS_PAGE.0.total_exit_time_ns / exits
         };
+        // Security event if latency exceeds 10 ns
+        if METRICS_PAGE.0.avg_exit_latency_ns > 10 {
+            security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: METRICS_PAGE.0.avg_exit_latency_ns });
+        }
         METRICS_PAGE.0.timestamp_ns = crate::scheduler::cycles_to_nanoseconds(crate::scheduler::get_cycle_counter());
     }
 }

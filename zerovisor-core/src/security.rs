@@ -15,6 +15,10 @@ pub enum SecurityEvent {
         guest_va: u64,
         error: u64,
     },
+    /// VMEXIT latency exceeded target threshold (10 ns)
+    PerfWarning {
+        avg_latency_ns: u64,
+    },
     // Future event types will follow here.
 }
 

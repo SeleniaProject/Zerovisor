@@ -22,6 +22,7 @@
 use zerovisor_hal::{self as hal, cpu::CpuFeatures, memory::MemoryRegion};
 use zerovisor_hal::PhysicalAddress;
 use crate::monitor;
+use crate::log;
 use zerovisor_hal::Cpu;
 
 /// Hardware verification/initialization errors
@@ -114,12 +115,19 @@ impl BootManager {
         // SAFETY: Bootloader guarantees pointer/length validity & static lifetime.
         let map_slice = unsafe { core::slice::from_raw_parts(memory_ptr, entries) };
 
-        Ok(Self {
+        let bm = Self {
             memory_map: map_slice,
             cpu_features: cpu.features(),
             security_state,
             metrics_page: monitor::metrics_mmio_ptr() as PhysicalAddress,
-        })
+        };
+        bm.log_metrics_address();
+        Ok(bm)
+    }
+
+    /// Log metrics page address via hypervisor UART for early diagnostics.
+    pub fn log_metrics_address(&self) {
+        log!("Metrics MMIO page = {:#x}", self.metrics_page);
     }
 
     /// Perform hardware/firmware attestation and store measurements.
