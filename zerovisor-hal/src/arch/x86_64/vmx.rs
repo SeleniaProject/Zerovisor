@@ -37,6 +37,8 @@ pub enum VmxError {
     EptSetupFailed,
     /// General failure
     Failure,
+    /// VMCS launch failed
+    LaunchFailed,
 }
 
 /// Internal per-VM representation
@@ -174,8 +176,17 @@ impl VirtualizationEngine for VmxEngine {
         Ok(handle)
     }
 
-    fn run_vcpu(&mut self, _vcpu: VcpuHandle) -> Result<VmExitReason, Self::Error> {
-        // Execute VMLAUNCH/VMRESUME loop – for now, we immediately return HLT
+    fn run_vcpu(&mut self, vcpu: VcpuHandle) -> Result<VmExitReason, Self::Error> {
+        // Find VM and VCPU
+        let vms = VMS.lock();
+        let vm = vms.iter().find(|v| v.vcpus.iter().any(|c| c.handle == vcpu)).ok_or(VmxError::InvalidVcpu)?;
+        // Use VMCS region
+        let vmcs = Vmcs::new(vm.vmcs_region);
+        vmcs.clear()?;
+        let mut active = vmcs.load()?;
+        // TODO: set guest/host state fields here. For now, minimal required fields assumed preinitialised.
+        unsafe { Self::vmlaunch()? };
+        // For demo, immediately treat as HLT exit
         Ok(VmExitReason::Hlt)
     }
 
@@ -204,6 +215,24 @@ impl VirtualizationEngine for VmxEngine {
     }
 
     fn unmap_guest_memory(&mut self, _vm: VmHandle, _gpa: PhysicalAddress, _size: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl VmxEngine {
+    /// Execute the VMLAUNCH instruction; returns Ok on success.
+    unsafe fn vmlaunch() -> Result<(), VmxError> {
+        let mut rflags: u64;
+        core::arch::asm!(
+            "vmlaunch",
+            "pushfq", "pop {rf}",
+            rf = lateout(reg) rflags,
+            options(nostack, preserves_flags),
+        );
+        // CF or ZF set indicates failure
+        if (rflags & 0x1) != 0 || (rflags & 0x40) != 0 {
+            return Err(VmxError::LaunchFailed);
+        }
         Ok(())
     }
 } 
