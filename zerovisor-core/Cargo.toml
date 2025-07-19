@@ -13,6 +13,3 @@ sha2 = { workspace = true }
 
 [features]
 default = []
-x86_64 = ["zerovisor-hal/x86_64"]
-arm64 = ["zerovisor-hal/arm64"]
-riscv = ["zerovisor-hal/riscv"]
