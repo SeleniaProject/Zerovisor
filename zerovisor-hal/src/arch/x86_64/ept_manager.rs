@@ -38,9 +38,14 @@ impl EptHierarchy {
     /// Physical address of root PML4 table.
     pub fn phys_root(&self) -> PhysicalAddress { self.pml4.as_ptr() as PhysicalAddress }
 
+    /// Public map wrapper selects page size automatically.
+    pub fn map(&mut self, gpa: u64, hpa: u64, size: u64, flags: EptFlags) -> Result<(), EptError> {
+        self.map_internal(gpa, hpa, size, flags)
+    }
+
     /// Map a guest physical range to host physical range with given flags.
     /// size must be 4 KiB, 2 MiB or 1 GiB aligned.
-    pub fn map(&mut self, gpa: u64, hpa: u64, size: u64, flags: EptFlags) -> Result<(), EptError> {
+    fn map_internal(&mut self, gpa: u64, hpa: u64, size: u64, flags: EptFlags) -> Result<(), EptError> {
         if size == 0 {
             return Ok(());
         }
@@ -186,8 +191,18 @@ impl EptHierarchy {
         Ok(Box::leak(boxed))
     }
 
+    /// Public unmap wrapper (4-KiB granularity for now).
+    pub fn unmap(&mut self, gpa: u64, size: u64) -> Result<(), EptError> {
+        if size % 0x1000 != 0 { return Err(EptError::InvalidAlignment); }
+        let pages = size / 0x1000;
+        for i in 0..pages {
+            self.unmap_internal(gpa + i * 0x1000)?;
+        }
+        Ok(())
+    }
+
     /// Unmap a guest physical 4 KiB page.
-    pub fn unmap(&mut self, gpa: u64) -> Result<(), EptError> {
+    fn unmap_internal(&mut self, gpa: u64) -> Result<(), EptError> {
         let pml4_idx = ((gpa >> 39) & 0x1FF) as usize;
         let pdpt_idx = ((gpa >> 30) & 0x1FF) as usize;
         let pd_idx   = ((gpa >> 21) & 0x1FF) as usize;
@@ -212,4 +227,8 @@ impl EptHierarchy {
         }
         Ok(())
     }
-} 
+}
+
+// EptHierarchy owns unique pointers to allocated tables and is safe to move across threads
+unsafe impl Send for EptHierarchy {}
+unsafe impl Sync for EptHierarchy {} 

@@ -18,7 +18,8 @@ use crate::memory::{MemoryFlags, PhysicalAddress};
 use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState};
 use crate::virtualization::arch::vmx::VmxEngine;
 use crate::arch::x86_64::vmcs::{Vmcs, VmcsError, VmcsField};
-use crate::arch::x86_64::ept::build_identity_ept;
+use crate::arch::x86_64::ept::EptFlags;
+use crate::arch::x86_64::ept_manager::EptHierarchy;
 use crate::ArchCpu;
 use crate::cycles::rdtsc;
 
@@ -54,6 +55,7 @@ struct Vm {
     handle: VmHandle,
     config: VmConfig,
     vmcs_region: PhysicalAddress,
+    ept: EptHierarchy,
     vcpus: Vec<Vcpu>,
 }
 
@@ -158,6 +160,7 @@ impl VirtualizationEngine for VmxEngine {
             handle,
             config: config.clone(),
             vmcs_region: vmcs_phys,
+            ept: EptHierarchy::new().map_err(|_| VmxError::EptSetupFailed)?,
             vcpus: Vec::new(),
         });
 
@@ -210,8 +213,8 @@ impl VirtualizationEngine for VmxEngine {
         active.write(VmcsField::HOST_CR4, CR4_VMXE);
         active.write(VmcsField::HOST_RIP, run_host_resume as u64);
 
-        // EPT pointer (identity map)
-        let ept_pml4 = build_identity_ept();
+        // EPT pointer from hierarchy
+        let ept_pml4 = vm.ept.phys_root();
         active.write(VmcsField::EPT_POINTER, ept_pml4 | (3 << 3));
 
         // ---------------------------------------------------------------
@@ -252,23 +255,24 @@ impl VirtualizationEngine for VmxEngine {
         }
     }
 
-    fn setup_nested_paging(&mut self, _vm: VmHandle) -> Result<(), Self::Error> {
-        let ept_pml4 = build_identity_ept();
-        // In real code we would write EPT_POINTER VMCS field here
-        // Example (ignored errors):
-        // let vmcs = Vmcs::new(...);
-        // let mut active = vmcs.load()?;
-        // active.write(VmcsField::EPT_POINTER, ept_pml4 | (3 << 3));
-        self.ept_tables.push(ept_pml4);
+    fn setup_nested_paging(&mut self, vm: VmHandle) -> Result<(), Self::Error> {
+        let mut vms = VMS.lock();
+        let vm_entry = vms.iter().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
+        let root = vm_entry.ept.phys_root();
+        self.ept_tables.push(root);
         Ok(())
     }
 
-    fn map_guest_memory(&mut self, _vm: VmHandle, _gpa: PhysicalAddress, _hpa: PhysicalAddress, _size: usize, _flags: MemoryFlags) -> Result<(), Self::Error> {
-        Ok(())
+    fn map_guest_memory(&mut self, vm: VmHandle, gpa: PhysicalAddress, hpa: PhysicalAddress, size: usize, _flags: MemoryFlags) -> Result<(), Self::Error> {
+        let mut vms = VMS.lock();
+        let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
+        vm_entry.ept.map(gpa, hpa, size as u64, EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC).map_err(|_| VmxError::EptSetupFailed)
     }
 
-    fn unmap_guest_memory(&mut self, _vm: VmHandle, _gpa: PhysicalAddress, _size: usize) -> Result<(), Self::Error> {
-        Ok(())
+    fn unmap_guest_memory(&mut self, vm: VmHandle, gpa: PhysicalAddress, size: usize) -> Result<(), Self::Error> {
+        let mut vms = VMS.lock();
+        let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
+        vm_entry.ept.unmap(gpa, size as u64).map_err(|_| VmxError::EptSetupFailed)
     }
 }
 
