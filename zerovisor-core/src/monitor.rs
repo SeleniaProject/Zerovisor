@@ -5,6 +5,21 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
+/// 4-KiB aligned memory page that mirrors `PerformanceMetrics` in real time.
+/// External monitoring agents can map this physical address to obtain
+/// zero-overhead access to hypervisor statistics (Requirement 5).
+#[repr(C, align(4096))]
+pub struct MetricsPage(PerformanceMetrics);
+
+// SAFETY: Writable from single core with atomic operations; readers treat as RO.
+static mut METRICS_PAGE: MetricsPage = MetricsPage(PerformanceMetrics {
+    total_exits: 0,
+    total_exit_time_ns: 0,
+    avg_exit_latency_ns: 0,
+    running_vms: 0,
+    timestamp_ns: 0,
+});
+
 #[derive(Debug, Clone, Copy)]
 pub struct PerformanceMetrics {
     pub total_exits: u64,
@@ -22,12 +37,36 @@ static RUNNING_VMS: AtomicU64 = AtomicU64::new(0);
 pub fn record_vmexit(latency_ns: u64) {
     TOTAL_EXITS.fetch_add(1, Ordering::Relaxed);
     TOTAL_EXIT_TIME_NS.fetch_add(latency_ns, Ordering::Relaxed);
+
+    // Update memory-mapped metrics page (non-atomic; readers tolerate tearing)
+    unsafe {
+        METRICS_PAGE.0.total_exits = TOTAL_EXITS.load(Ordering::Relaxed);
+        METRICS_PAGE.0.total_exit_time_ns = TOTAL_EXIT_TIME_NS.load(Ordering::Relaxed);
+        let exits = METRICS_PAGE.0.total_exits;
+        METRICS_PAGE.0.avg_exit_latency_ns = if exits == 0 {
+            0
+        } else {
+            METRICS_PAGE.0.total_exit_time_ns / exits
+        };
+        METRICS_PAGE.0.timestamp_ns = crate::scheduler::cycles_to_nanoseconds(crate::scheduler::get_cycle_counter());
+    }
 }
 
 #[inline]
-pub fn vm_started() { RUNNING_VMS.fetch_add(1, Ordering::Relaxed); }
+pub fn vm_started() {
+    RUNNING_VMS.fetch_add(1, Ordering::Relaxed);
+    unsafe { METRICS_PAGE.0.running_vms = RUNNING_VMS.load(Ordering::Relaxed); }
+}
 #[inline]
-pub fn vm_stopped() { RUNNING_VMS.fetch_sub(1, Ordering::Relaxed); }
+pub fn vm_stopped() {
+    RUNNING_VMS.fetch_sub(1, Ordering::Relaxed);
+    unsafe { METRICS_PAGE.0.running_vms = RUNNING_VMS.load(Ordering::Relaxed); }
+}
+
+/// Return a pointer to the read-only MMIO metrics page for external tools.
+pub fn metrics_mmio_ptr() -> *const PerformanceMetrics {
+    unsafe { &METRICS_PAGE.0 as *const PerformanceMetrics }
+}
 
 pub fn collect() -> PerformanceMetrics {
     let exits = TOTAL_EXITS.load(Ordering::Relaxed);
