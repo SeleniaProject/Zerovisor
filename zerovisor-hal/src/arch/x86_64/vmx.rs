@@ -239,7 +239,9 @@ impl VirtualizationEngine for VmxEngine {
 
         let end_cycle = rdtsc();
         let latency = end_cycle - start_cycle;
-        // update stats
+        let _ = latency; // cycles already recorded; convert later if needed
+
+        // Update per-VM statistics
         let mut vms_mut = VMS.lock();
         if let Some(vm_stat) = vms_mut.iter_mut().find(|v| v.vcpus.iter().any(|c| c.handle == vcpu)) {
             vm_stat.stats.record_exit(reason_val as usize, latency as u64);
