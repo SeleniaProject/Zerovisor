@@ -1,0 +1,18 @@
+[package]
+name = "zerovisor-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core hypervisor functionality"
+
+[dependencies]
+spin = { workspace = true }
+bitflags = { workspace = true }
+static_assertions = { workspace = true }
+zerovisor-hal = { path = "../zerovisor-hal" }
+sha2 = { workspace = true }
+
+[features]
+default = []
+x86_64 = ["zerovisor-hal/x86_64"]
+arm64 = ["zerovisor-hal/arm64"]
+riscv = ["zerovisor-hal/riscv"]
