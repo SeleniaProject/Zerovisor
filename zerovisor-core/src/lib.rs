@@ -18,6 +18,8 @@ pub mod monitor;
 pub mod boot_manager;
 pub mod vm_manager;
 pub mod api;
+pub mod console;
+pub mod gpu;
 
 use zerovisor_hal::{HalError, init as hal_init};
 
@@ -28,6 +30,9 @@ pub fn init() -> Result<(), ZerovisorError> {
     
     // Initialize core hypervisor components
     hypervisor::init()?;
+
+    // Initialize GPU virtualization subsystem
+    gpu::init()?;
     
     Ok(())
 }
@@ -39,6 +44,8 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
 
     // Initialize hypervisor with actual memory map
     hypervisor::init_with_map(memory_map)?;
+
+    gpu::init()?;
 
     Ok(())
 }
