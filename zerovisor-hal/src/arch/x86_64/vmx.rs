@@ -16,7 +16,8 @@ use spin::Mutex;
 use crate::cpu::Cpu;
 use crate::memory::{MemoryFlags, PhysicalAddress};
 use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState};
-use crate::virtualization::arch::vmx::{VmxEngine, Vmcs};
+use crate::virtualization::arch::vmx::VmxEngine;
+use super::vmcs::{Vmcs, VmcsError};
 use crate::ArchCpu;
 
 /// Error type used by the VMX engine
