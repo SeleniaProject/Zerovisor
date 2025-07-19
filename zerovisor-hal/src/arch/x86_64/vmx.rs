@@ -291,9 +291,42 @@ impl VirtualizationEngine for VmxEngine {
                 Ok(VmExitAction::Continue)
             }
             VmExitReason::IoInstruction { port, size, write } => {
-                // For demo, treat as unhandled and emulate success
-                let _ = (port, size, write);
-                Ok(VmExitAction::Emulate)
+                // Emulate legacy COM1 (UART) to redirect guest output to hypervisor log.
+                if port == 0x3F8 {
+                    let vmcs_ptr = {
+                        let vms = VMS.lock();
+                        vms.iter()
+                            .find(|v| v.vcpus.iter().any(|c| c.handle == _vcpu))
+                            .and_then(|vm| vm.vcpus.iter().find(|c| c.handle == _vcpu))
+                            .map(|vcpu| vcpu.vmcs_region)
+                    };
+
+                    if let Some(vmcs_phys) = vmcs_ptr {
+                        let vmcs = Vmcs::new(vmcs_phys);
+                        if let Ok(mut act) = vmcs.load() {
+                            if write {
+                                // Guest OUT instruction: take lowest byte(s) from RAX
+                                let val = act.read(VmcsField::GUEST_RAX) & match size { 1 => 0xFF, 2 => 0xFFFF, _ => 0xFFFF_FFFF };
+                                // Print character(s) to hypervisor log (ASCII)
+                                if size == 1 {
+                                    let byte = val as u8;
+                                    unsafe {
+                                        core::arch::asm!("out dx, al", in("dx") 0x3F8u16, in("al") byte, options(nomem, nostack, preserves_flags));
+                                    }
+                                }
+                            } else {
+                                // Guest IN instruction: return 0xFF (UART idle)
+                                let mut rax = act.read(VmcsField::GUEST_RAX);
+                                rax = (rax & !match size { 1 => 0xFF, 2 => 0xFFFF, _ => 0xFFFF_FFFF }) | match size { 1 => 0xFF, 2 => 0xFFFF, _ => 0xFFFF_FFFF };
+                                act.write(VmcsField::GUEST_RAX, rax);
+                            }
+                        }
+                    }
+                    Ok(VmExitAction::Continue)
+                } else {
+                    // Unhandled port – fall back to default emulation path.
+                    Ok(VmExitAction::Emulate)
+                }
             }
             VmExitReason::NestedPageFault { guest_phys, .. } => {
                 // Simple identity map 4 KiB page
