@@ -10,6 +10,7 @@ use alloc::vec::Vec;
 
 use pqcrypto_kyber::{kyber512, kyber768};
 use pqcrypto_dilithium::{dilithium3, dilithium5};
+use pqcrypto_sphincsplus::sphincssha2128s;
 
 /// Kyber keypair (public + secret)
 #[derive(Clone)]
@@ -74,4 +75,31 @@ pub fn dilithium_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> 
     let pk = dilithium5::PublicKey::from_bytes(public_key).expect("invalid pk");
     let sig = dilithium5::DetachedSignature::from_bytes(signature).expect("invalid sig");
     dilithium5::verify_detached_signature(&sig, message, &pk).is_ok()
+}
+
+// ---------------------------------------------------------------------------
+// SPHINCS+ SHA2-128s signature scheme
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+pub struct SphincsKeypair {
+    pub public: Vec<u8>,
+    pub secret: Vec<u8>,
+}
+
+pub fn sphincs_generate() -> SphincsKeypair {
+    let (pk, sk) = sphincssha2128s::keypair();
+    SphincsKeypair { public: pk.as_bytes().to_vec(), secret: sk.as_bytes().to_vec() }
+}
+
+pub fn sphincs_sign(secret_key: &[u8], message: &[u8]) -> Vec<u8> {
+    let sk = sphincssha2128s::SecretKey::from_bytes(secret_key).expect("invalid sk");
+    let sig = sphincssha2128s::sign_detached(message, &sk);
+    sig.as_bytes().to_vec()
+}
+
+pub fn sphincs_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
+    let pk = sphincssha2128s::PublicKey::from_bytes(public_key).expect("invalid pk");
+    let sig = sphincssha2128s::DetachedSignature::from_bytes(signature).expect("invalid sig");
+    sphincssha2128s::verify_detached_signature(&sig, message, &pk).is_ok()
 } 
