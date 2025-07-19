@@ -10,7 +10,7 @@ use crate::memory::PhysicalAddress;
 
 /// EPT entry flags
 bitflags::bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone)]
     pub struct EptFlags: u64 {
         const READ      = 1 << 0;
         const WRITE     = 1 << 1;
@@ -29,6 +29,18 @@ impl EptTable {
 
     pub fn set_entry(&mut self, index: usize, addr: PhysicalAddress, flags: EptFlags) {
         self.0[index] = (addr & 0x000f_ffff_ffff_f000) | flags.bits();
+    }
+
+    /// Immutable access to raw 64-bit entry value.
+    #[inline]
+    pub fn entry(&self, idx: usize) -> u64 {
+        self.0[idx]
+    }
+
+    /// Mutable access to raw entry (caller must ensure coherence).
+    #[inline]
+    pub fn entry_mut(&mut self, idx: usize) -> &mut u64 {
+        &mut self.0[idx]
     }
 
     pub fn as_phys(&self) -> PhysicalAddress {
