@@ -30,6 +30,46 @@ pub struct BitmapAllocator {
     page_size: usize,
 }
 
+impl BitmapAllocator {
+    /// Allocate `count` contiguous pages within a [start,end) physical range.
+    pub fn allocate_pages_in_range(&mut self,
+                                   range_start: PhysicalAddress,
+                                   range_end: PhysicalAddress,
+                                   count: usize) -> Result<PhysicalAddress, MemoryError> {
+        if count == 0 || range_end <= range_start { return Err(MemoryError::InvalidSize); }
+
+        let first_page_idx = ((range_start - self.base_address) / self.page_size as u64) as usize;
+        let last_page_idx  = ((range_end  - self.base_address) / self.page_size as u64) as usize;
+
+        if last_page_idx > self.total_pages { return Err(MemoryError::InvalidAddress); }
+
+        let mut run_len = 0;
+        let mut run_start = 0;
+        for idx in first_page_idx..last_page_idx {
+            let word_idx = idx / 64;
+            let bit_idx = idx % 64;
+            if (self.bitmap[word_idx] & (1u64 << bit_idx)) == 0 {
+                // page free
+                if run_len == 0 { run_start = idx; }
+                run_len += 1;
+                if run_len == count {
+                    // mark pages allocated
+                    for p in run_start..run_start+count {
+                        let w = p/64; let b=p%64;
+                        self.bitmap[w] |= 1u64 << b;
+                    }
+                    self.free_pages -= count;
+                    let addr = self.base_address + (run_start as u64) * self.page_size as u64;
+                    return Ok(addr);
+                }
+            } else {
+                run_len = 0;
+            }
+        }
+        Err(MemoryError::OutOfMemory)
+    }
+}
+
 /// NUMA topology information
 #[derive(Debug, Clone)]
 pub struct NumaTopology {
@@ -244,13 +284,20 @@ impl PhysicalMemoryManager {
         let _node = topology.get_node(node_id)
             .ok_or(MemoryError::NumaNodeNotFound)?;
 
-        // TODO: Implement real per-node allocator; fallback records miss metric
-        let res = self.allocate_pages(count, AllocFlags::NUMA_LOCAL);
-        if res.is_err() {
-            crate::monitor::add_numa_miss();
-            // Fallback to global allocator (already attempted)
+        let ranges: alloc::vec::Vec<MemoryRange> = _node.memory_ranges.iter().flatten().cloned().collect();
+
+        let mut allocator = self.allocator.lock();
+        for r in &ranges {
+            if !r.available { continue; }
+            if let Ok(addr) = allocator.allocate_pages_in_range(r.start, r.end, count) {
+                return Ok(addr);
+            }
         }
-        res
+
+        // fallback to global allocation
+        crate::monitor::add_numa_miss();
+        drop(allocator);
+        self.allocate_pages(count, AllocFlags::empty())
     }
 
     /// Zero memory region
