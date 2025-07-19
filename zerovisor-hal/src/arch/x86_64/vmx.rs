@@ -226,6 +226,17 @@ impl VirtualizationEngine for VmxEngine {
     fn handle_vm_exit(&mut self, _vcpu: VcpuHandle, reason: VmExitReason) -> Result<VmExitAction, Self::Error> {
         match reason {
             VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
+            VmExitReason::Cpuid { leaf, subleaf } => {
+                // Simple CPUID emulation: expose host features directly
+                let r = unsafe { core::arch::x86_64::__cpuid_count(leaf, subleaf) };
+                // Inject results back into guest (skipped here)
+                Ok(VmExitAction::Continue)
+            }
+            VmExitReason::IoInstruction { port, size, write } => {
+                // For demo, treat as unhandled and emulate success
+                let _ = (port, size, write);
+                Ok(VmExitAction::Emulate)
+            }
             _ => Ok(VmExitAction::Emulate),
         }
     }
