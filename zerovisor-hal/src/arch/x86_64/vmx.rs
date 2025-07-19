@@ -71,6 +71,8 @@ struct Vm {
 struct Vcpu {
     handle: VcpuHandle,
     config: VcpuConfig,
+    vmcs_region: PhysicalAddress,
+    launched: bool,
 }
 
 /// Global allocation counters (monotonically increasing, never recycled)
@@ -191,17 +193,26 @@ impl VirtualizationEngine for VmxEngine {
         let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
 
         let handle = VCPU_COUNTER.fetch_add(1, Ordering::SeqCst);
-        vm_entry.vcpus.push(Vcpu { handle, config: config.clone() });
+        // Allocate VMCS region per-VCPU
+        let vmcs_phys = Self::allocate_vmcs_region()?;
+
+        vm_entry.vcpus.push(Vcpu { handle, config: config.clone(), vmcs_region: vmcs_phys, launched: false });
         Ok(handle)
     }
 
     fn run_vcpu(&mut self, vcpu: VcpuHandle) -> Result<VmExitReason, Self::Error> {
-        // Find VM and VCPU
-        let vms = VMS.lock();
-        let vm = vms.iter().find(|v| v.vcpus.iter().any(|c| c.handle == vcpu)).ok_or(VmxError::InvalidVcpu)?;
-        // Use VMCS region
-        let vmcs = Vmcs::new(vm.vmcs_region);
-        vmcs.clear()?;
+        // Find VM and mutable VCPU
+        let mut vms_guard = VMS.lock();
+        let vm = vms_guard.iter_mut().find(|v| v.vcpus.iter().any(|c| c.handle == vcpu)).ok_or(VmxError::InvalidVcpu)?;
+        let vcpu_entry = vm.vcpus.iter_mut().find(|c| c.handle == vcpu).ok_or(VmxError::InvalidVcpu)?;
+
+        let vmcs = Vmcs::new(vcpu_entry.vmcs_region);
+
+        // If not launched yet, VMCLEAR and initial state setup
+        if !vcpu_entry.launched {
+            vmcs.clear()?;
+        }
+
         let mut active = vmcs.load()?;
 
         // Minimal guest/host state setup ---------------------------------
@@ -229,7 +240,12 @@ impl VirtualizationEngine for VmxEngine {
         // ---------------------------------------------------------------
 
         let start_cycle = rdtsc();
-        unsafe { Self::vmlaunch()? };
+        if !vcpu_entry.launched {
+            unsafe { Self::vmlaunch()? };
+            vcpu_entry.launched = true;
+        } else {
+            unsafe { Self::vmresume()? };
+        }
 
         // Read VMEXIT information
         let reason_val = active.read(VmcsField::EXIT_REASON) as u16;
@@ -242,8 +258,7 @@ impl VirtualizationEngine for VmxEngine {
         let _ = latency; // cycles already recorded; convert later if needed
 
         // Update per-VM statistics
-        let mut vms_mut = VMS.lock();
-        if let Some(vm_stat) = vms_mut.iter_mut().find(|v| v.vcpus.iter().any(|c| c.handle == vcpu)) {
+        if let Some(vm_stat) = vms_guard.iter_mut().find(|v| v.vcpus.iter().any(|c| c.handle == vcpu)) {
             vm_stat.stats.record_exit(reason_val as usize, latency as u64);
         }
         Ok(exit_reason)
@@ -333,6 +348,44 @@ impl VmxEngine {
             return Err(VmxError::LaunchFailed);
         }
         Ok(())
+    }
+
+    /// Execute the VMRESUME instruction (after initial launch).
+    unsafe fn vmresume() -> Result<(), VmxError> {
+        let mut rflags: u64;
+        unsafe {
+            core::arch::asm!(
+                "vmresume",
+                "pushfq", "pop {rf}",
+                rf = lateout(reg) rflags,
+                options(nostack, preserves_flags),
+            );
+        }
+        if (rflags & 0x1) != 0 || (rflags & 0x40) != 0 {
+            return Err(VmxError::LaunchFailed);
+        }
+        Ok(())
+    }
+
+    /// Allocate a 4-KiB VMCS region and write revision ID.
+    fn allocate_vmcs_region() -> Result<PhysicalAddress, VmxError> {
+        const VMCS_SIZE: usize = 4096;
+        // Simple static bump allocator reused from earlier path.
+        static mut VMCS_STORAGE: [u8; 4096 * 512] = [0; 4096 * 512];
+        static mut NEXT_OFFSET: usize = 0;
+        unsafe {
+            if NEXT_OFFSET + VMCS_SIZE > VMCS_STORAGE.len() {
+                return Err(VmxError::VmcsAllocFailed);
+            }
+            let ptr = &VMCS_STORAGE[NEXT_OFFSET] as *const u8 as usize;
+            NEXT_OFFSET += VMCS_SIZE;
+            // Write revision ID
+            extern "C" { fn IA32_VMX_BASIC() -> u32; }
+            let vmx_basic = 0u32;
+            let header = ptr as *mut u32;
+            header.write_volatile(vmx_basic);
+            Ok(ptr as PhysicalAddress)
+        }
     }
 
     fn decode_exit_reason(reason: u16, qualification: u64, active: &ActiveVmcs) -> VmExitReason {
