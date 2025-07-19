@@ -20,6 +20,13 @@ pub enum SecurityEvent {
         avg_latency_ns: u64,
         wcet_ns: Option<u64>,
     },
+    /// Real-time deadline miss detected by scheduler.
+    RealTimeDeadlineMiss {
+        vm: u32,
+        vcpu: u32,
+        deadline_ns: u64,
+        now_ns: u64,
+    },
     // Future event types will follow here.
 }
 

@@ -14,6 +14,7 @@ use spin::Mutex;
 use zerovisor_hal::virtualization::{VmHandle, VcpuHandle};
 
 use crate::ZerovisorError;
+use crate::security::{self, SecurityEvent};
 
 // --------------------------------------------------------------------------
 // 型定義
@@ -88,8 +89,38 @@ impl QuantumScheduler {
         }
     }
 
+    /// チェックして期限を過ぎた RT エンティティがあれば SecurityEvent を発行。
+    fn check_rt_deadlines(&mut self) {
+        let now = cycles_to_nanoseconds(get_cycle_counter());
+        // BinaryHeap なので直接イテレートしづらい。ここではコピーして検査。
+        let mut overdue: Vec<SchedEntity> = self.real_time_queue
+            .iter()
+            .filter(|e| e.deadline_ns.map_or(false, |d| d <= now))
+            .cloned()
+            .collect();
+        for ent in &overdue {
+            // 最低優先度を 255 (max) に引き上げて即実行させる。
+            let mut ent_mut = *ent;
+            ent_mut.priority = 255;
+            // 再投入
+            self.ready_queue.push(ent_mut);
+            // セキュリティ / RT 警告
+            security::record_event(SecurityEvent::RealTimeDeadlineMiss {
+                vm: ent.vm,
+                vcpu: ent.vcpu,
+                deadline_ns: ent.deadline_ns.unwrap_or(0),
+                now_ns: now,
+            });
+        }
+        // overdue エントリを RT キューから除去
+        self.real_time_queue
+            .retain(|e| !overdue.iter().any(|o| o.vcpu == e.vcpu && o.vm == e.vm));
+    }
+
     /// 次に実行すべきエンティティを決定。
     pub fn schedule_next(&mut self) -> Option<SchedEntity> {
+        // デッドライン監視
+        self.check_rt_deadlines();
         // まずリアルタイムキュー。期限切れのものを優先。
         if let Some(rt_top) = self.real_time_queue.peek() {
             // 締切が過ぎていないかチェック (簡易実装)。
