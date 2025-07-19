@@ -2,6 +2,9 @@
 
 #![allow(dead_code)]
 
+extern crate alloc;
+use alloc::vec::Vec;
+
 use bitflags::bitflags;
 use crate::cpu::CpuState;
 use crate::memory::{MemoryFlags, PhysicalAddress, VirtualAddress};

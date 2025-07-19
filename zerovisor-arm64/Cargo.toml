@@ -1,0 +1,10 @@
+[package]
+name = "zerovisor-arm64"
+version = "0.1.0"
+edition = "2021"
+description = "ARM64 architecture support for Zerovisor"
+
+[dependencies]
+bitflags = { workspace = true }
+cortex-a = { workspace = true }
+# zerovisor-hal = { path = "../zerovisor-hal", default-features = false }

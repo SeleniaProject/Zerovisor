@@ -76,13 +76,13 @@ impl Vmcs {
 
     /// Clear VMCS state using `VMCLEAR`.
     pub fn clear(&self) -> Result<(), VmcsError> {
-        vmclear(self.phys_addr).map_err(|_| VmcsError::VmclearFailed)
+        unsafe { vmclear(self.phys_addr) }.map_err(|_| VmcsError::VmclearFailed)
     }
 
     /// Load this VMCS to current VMCS pointer with `VMPTRLD`, returning an
     /// `ActiveVmcs` token that allows VMREAD/VMWRITE.
     pub fn load(&self) -> Result<ActiveVmcs, VmcsError> {
-        vmptrld(self.phys_addr).map_err(|_| VmcsError::VmptrldFailed)?;
+        unsafe { vmptrld(self.phys_addr) }.map_err(|_| VmcsError::VmptrldFailed)?;
         Ok(ActiveVmcs { _phantom: PhantomData })
     }
 

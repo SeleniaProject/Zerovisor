@@ -1,0 +1,9 @@
+[package]
+name = "zerovisor-riscv"
+version = "0.1.0"
+edition = "2021"
+description = "RISC-V architecture support for Zerovisor"
+
+[dependencies]
+bitflags = { workspace = true }
+riscv = { workspace = true }

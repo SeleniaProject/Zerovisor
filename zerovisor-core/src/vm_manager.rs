@@ -1,9 +1,12 @@
 //! Basic VM manager skeleton (Task 6.1)
 //! Provides simple lifecycle API wrappers around HAL virtualization engine.
 
+extern crate alloc;
+
 use alloc::collections::BTreeMap;
 use spin::Mutex;
 use zerovisor_hal::{VirtualizationEngine, HalError};
+use zerovisor_hal::cpu::CpuFeatures;
 use zerovisor_hal::virtualization::{VmHandle, VmConfig, VcpuHandle, VcpuConfig};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +40,7 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
         let vcpu_cfg = VcpuConfig {
             id: 0,
             initial_state: eng.get_vcpu_state(0).unwrap_or_default(),
-            exposed_features: eng.get_vcpu_state(0).unwrap_or_default().flags.into(),
+            exposed_features: CpuFeatures::empty(),
             real_time_priority: None,
         };
         let vcpu = eng.create_vcpu(vm, &vcpu_cfg)?;

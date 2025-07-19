@@ -1,0 +1,17 @@
+[package]
+name = "zerovisor-bootloader"
+version = "0.1.0"
+edition = "2021"
+description = "UEFI bootloader for Zerovisor hypervisor"
+
+[dependencies]
+uefi = "0.26"
+uefi-services = "0.23"
+log = "0.4"
+
+[features]
+default = []
+
+[[bin]]
+name = "bootloader"
+path = "src/main.rs"

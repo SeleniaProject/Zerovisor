@@ -1,0 +1,11 @@
+[package]
+name = "zerovisor-x86_64"
+version = "0.1.0"
+edition = "2021"
+description = "x86_64 architecture support for Zerovisor"
+
+[dependencies]
+bitflags = { workspace = true }
+x86_64 = { workspace = true }
+raw-cpuid = "11.0"
+# zerovisor-hal = { path = "../zerovisor-hal", default-features = false }

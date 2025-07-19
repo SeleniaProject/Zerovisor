@@ -17,10 +17,9 @@ use crate::cpu::Cpu;
 use crate::memory::{MemoryFlags, PhysicalAddress};
 use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState};
 use crate::virtualization::arch::vmx::VmxEngine;
-use super::vmcs::{Vmcs, VmcsError};
+use crate::arch::x86_64::vmcs::{Vmcs, VmcsError, VmcsField};
+use crate::arch::x86_64::ept::build_identity_ept;
 use crate::ArchCpu;
-use super::ept::build_identity_ept;
-use super::vmcs::VmcsField;
 use crate::cycles::rdtsc;
 
 /// Error type used by the VMX engine
@@ -42,6 +41,12 @@ pub enum VmxError {
     Failure,
     /// VMCS launch failed
     LaunchFailed,
+}
+
+impl From<VmcsError> for VmxError {
+    fn from(_: VmcsError) -> Self {
+        VmxError::Failure
+    }
 }
 
 /// Internal per-VM representation
@@ -206,6 +211,7 @@ impl VirtualizationEngine for VmxEngine {
         active.write(VmcsField::HOST_RIP, run_host_resume as u64);
 
         // EPT pointer (identity map)
+        let ept_pml4 = build_identity_ept();
         active.write(VmcsField::EPT_POINTER, ept_pml4 | (3 << 3));
 
         // ---------------------------------------------------------------
@@ -270,12 +276,14 @@ impl VmxEngine {
     /// Execute the VMLAUNCH instruction; returns Ok on success.
     unsafe fn vmlaunch() -> Result<(), VmxError> {
         let mut rflags: u64;
-        core::arch::asm!(
-            "vmlaunch",
-            "pushfq", "pop {rf}",
-            rf = lateout(reg) rflags,
-            options(nostack, preserves_flags),
-        );
+        unsafe {
+            core::arch::asm!(
+                "vmlaunch",
+                "pushfq", "pop {rf}",
+                rf = lateout(reg) rflags,
+                options(nostack, preserves_flags),
+            );
+        }
         // CF or ZF set indicates failure
         if (rflags & 0x1) != 0 || (rflags & 0x40) != 0 {
             return Err(VmxError::LaunchFailed);

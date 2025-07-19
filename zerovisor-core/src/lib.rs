@@ -6,6 +6,8 @@
 //! This crate provides the main hypervisor logic that works across
 //! different architectures using the HAL (Hardware Abstraction Layer).
 
+extern crate alloc;
+
 pub mod hypervisor;
 pub mod memory;
 pub mod vm;

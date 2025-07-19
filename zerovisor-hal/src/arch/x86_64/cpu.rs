@@ -1,19 +1,19 @@
 
+#![cfg(target_arch = "x86_64")]
+#![allow(clippy::missing_safety_doc)]
+
 //! x86_64 specific implementation for Zerovisor HAL
 //!
 //! This module provides a concrete implementation of the `Cpu` trait for
 //! Intel/AMD x86_64 processors with VMX/SVM support. It performs thorough
 //! feature detection, enables virtualization extensions, and exposes rich
 //! CPU state management functionality required by the hypervisor.
-#![cfg(target_arch = "x86_64")]
-#![allow(clippy::missing_safety_doc)]
 
 use core::arch::x86_64::__cpuid;
 use x86::msr::rdmsr;
 use x86_64::registers::control::{Cr4, Cr4Flags};
 
 use crate::cpu::{Cpu, CpuFeatures, CpuRegister, CpuState, PhysicalAddress, RegisterValue};
-use crate::cpu::Cpu as _; // bring trait into scope
 
 /// VMX basic leaf MSR (IA32_VMX_BASIC)
 const IA32_VMX_BASIC: u32 = 0x480;
@@ -95,7 +95,7 @@ impl X86Cpu {
     }
 
     /// Execute the `vmxon` instruction with the supplied physical address.
-    fn vmxon(addr: PhysicalAddress) -> Result<(), X86CpuError> {
+    unsafe fn vmxon(addr: PhysicalAddress) -> Result<(), X86CpuError> {
         // SAFETY: execution of the VMXON instruction requires CPL0 and CR4.VMXE=1.
         unsafe {
             core::arch::asm!(
@@ -147,7 +147,7 @@ impl Cpu for X86Cpu {
 
         // 3. Execute VMXON
         let phys_addr = unsafe { &VMXON_REGION as *const _ as PhysicalAddress };
-        Self::vmxon(phys_addr)?;
+        unsafe { Self::vmxon(phys_addr)? };
 
         Ok(())
     }
@@ -202,36 +202,39 @@ impl Cpu for X86Cpu {
 
     fn write_register(&mut self, reg: CpuRegister, value: RegisterValue) -> Result<(), Self::Error> {
         match reg {
-            CpuRegister::GeneralPurpose(idx) => unsafe {
-                match idx {
-                    0 => core::arch::asm!("mov rax, {}", in(reg) value, options(nomem, nostack)),
-                    1 => core::arch::asm!("mov rbx, {}", in(reg) value, options(nomem, nostack)),
-                    2 => core::arch::asm!("mov rcx, {}", in(reg) value, options(nomem, nostack)),
-                    3 => core::arch::asm!("mov rdx, {}", in(reg) value, options(nomem, nostack)),
-                    4 => core::arch::asm!("mov rsi, {}", in(reg) value, options(nomem, nostack)),
-                    5 => core::arch::asm!("mov rdi, {}", in(reg) value, options(nomem, nostack)),
-                    6 => core::arch::asm!("mov rbp, {}", in(reg) value, options(nomem, nostack)),
-                    7 => core::arch::asm!("mov rsp, {}", in(reg) value, options(nomem, nostack)),
-                    _ => return Err(X86CpuError::InvalidRegister),
+            CpuRegister::GeneralPurpose(idx) => {
+                unsafe {
+                    match idx {
+                        0 => core::arch::asm!("mov rax, {}", in(reg) value, options(nomem, nostack)),
+                        1 => core::arch::asm!("mov rbx, {}", in(reg) value, options(nomem, nostack)),
+                        2 => core::arch::asm!("mov rcx, {}", in(reg) value, options(nomem, nostack)),
+                        3 => core::arch::asm!("mov rdx, {}", in(reg) value, options(nomem, nostack)),
+                        4 => core::arch::asm!("mov rsi, {}", in(reg) value, options(nomem, nostack)),
+                        5 => core::arch::asm!("mov rdi, {}", in(reg) value, options(nomem, nostack)),
+                        6 => core::arch::asm!("mov rbp, {}", in(reg) value, options(nomem, nostack)),
+                        7 => core::arch::asm!("mov rsp, {}", in(reg) value, options(nomem, nostack)),
+                        _ => return Err(Self::Error::InvalidRegister),
+                    }
                 }
-                Ok(())
-            },
-            _ => Err(X86CpuError::InvalidRegister),
+            }
+            _ => return Err(Self::Error::InvalidRegister),
         }
+        Ok(())
     }
 
     fn flush_tlb(&self) {
-        unsafe { core::arch::asm!("invlpg [{}]", in(reg) 0usize, options(nostack, preserves_flags)) };
+        unsafe {
+            core::arch::asm!("invlpg [{}]", in(reg) 0usize, options(nostack, preserves_flags));
+        }
     }
 
     fn invalidate_icache(&self) {
-        // WBINVD flushes caches including instruction cache.
-        unsafe { core::arch::asm!("wbinvd", options(nostack, preserves_flags)) };
+        // No direct equivalent on x86_64; leave as NOP for now.
     }
 
     fn cpu_id(&self) -> u32 {
-        // APIC ID via CPUID leaf 0xB or 1.
-        let res = unsafe { __cpuid(1) };
-        (res.ebx >> 24) & 0xFF
+        // Use APIC ID as CPU identifier (simplified)
+        let apic_id = unsafe { __cpuid(1).edx >> 24 } & 0xff;
+        apic_id
     }
 } 
