@@ -14,6 +14,7 @@ pub mod vm;
 pub mod scheduler;
 pub mod security;
 pub mod log;
+pub mod monitor;
 pub mod boot_manager;
 pub mod vm_manager;
 

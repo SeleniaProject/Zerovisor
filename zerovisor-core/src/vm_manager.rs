@@ -9,6 +9,7 @@ use zerovisor_hal::{VirtualizationEngine, HalError};
 use zerovisor_hal::cpu::CpuFeatures;
 use zerovisor_hal::virtualization::{VmHandle, VmConfig, VcpuHandle, VcpuConfig, VmExitAction};
 use crate::scheduler::{self, register_vcpu, pick_next, quantum_expired, SchedEntity};
+use crate::{log, monitor};
 // logging macro is imported via crate root
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,7 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
         let vcpu = eng.create_vcpu(vm, &vcpu_cfg)?;
         // スケジューラへ登録 (デフォルト優先度 128)。
         register_vcpu(vm, vcpu, 128, None);
+        monitor::vm_started();
         self.states.lock().insert(vm, VmState::Running);
         Ok(())
     }
@@ -59,18 +61,24 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
                 let _vm = entity.vm;
                 let vcpu = entity.vcpu;
                 // 実行
-                let exit_reason = {
+                let start_cycle = crate::scheduler::get_cycle_counter();
+                let exit_result = {
                     let mut eng = self.engine.lock();
                     eng.run_vcpu(vcpu)
                 };
+                let end_cycle = crate::scheduler::get_cycle_counter();
+                let latency_ns = crate::scheduler::cycles_to_nanoseconds(end_cycle - start_cycle);
 
-                match exit_reason {
+                match exit_result {
                     Ok(reason) => {
                         crate::log!("VMEXIT reason {:?} on VCPU {}", reason, vcpu);
                         let action = {
                             let mut eng = self.engine.lock();
                             eng.handle_vm_exit(vcpu, reason)
                         };
+                        // record latency (placeholder 0 for now, need to compute)
+                        monitor::record_vmexit(latency_ns);
+
                         match action {
                             Ok(VmExitAction::Continue) => quantum_expired(entity),
                             Ok(VmExitAction::Shutdown) | Ok(VmExitAction::Reset) | Ok(VmExitAction::Suspend) => {
