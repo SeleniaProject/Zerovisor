@@ -1,11 +1,40 @@
 //! Security engine implementation
 
+use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::ZerovisorError;
 
-/// Security engine placeholder module
-/// This will be implemented in future tasks
+/// Maximum number of security events stored in memory.
+const MAX_EVENTS: usize = 1024;
 
+/// Descriptor for a security-related hypervisor event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecurityEvent {
+    /// Extended Page Table violation by guest.
+    EptViolation {
+        guest_pa: u64,
+        guest_va: u64,
+        error: u64,
+    },
+    // Future event types will follow here.
+}
+
+/// Fixed-size ring buffer of security events (lock-free single producer).
+static mut EVENT_BUF: [Option<SecurityEvent>; MAX_EVENTS] = [None; MAX_EVENTS];
+static WRITE_IDX: AtomicUsize = AtomicUsize::new(0);
+
+/// Record a security event into the global ring buffer.
+pub fn record_event(ev: SecurityEvent) {
+    let idx = WRITE_IDX.fetch_add(1, Ordering::Relaxed) % MAX_EVENTS;
+    unsafe { EVENT_BUF[idx] = Some(ev); }
+}
+
+/// Initialize security engine (placeholder for crypto setup, attestation…).
 pub fn init() -> Result<(), ZerovisorError> {
-    // Security engine initialization will be implemented later
+    // In future this will set up quantum-resistant crypto, etc.
     Ok(())
+}
+
+/// Expose immutable slice of stored events for diagnostics.
+pub fn events() -> &'static [Option<SecurityEvent>; MAX_EVENTS] {
+    unsafe { &EVENT_BUF }
 }

@@ -10,6 +10,7 @@ use zerovisor_hal::cpu::CpuFeatures;
 use zerovisor_hal::virtualization::{VmHandle, VmConfig, VcpuHandle, VcpuConfig, VmExitAction};
 use crate::scheduler::{self, register_vcpu, pick_next, quantum_expired, SchedEntity};
 use crate::{log, monitor};
+use crate::security::{self, SecurityEvent};
 // logging macro is imported via crate root
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +86,15 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
                                 // TODO: 状態更新
                             }
                             _ => quantum_expired(entity),
+                        }
+
+                        // Security event logging for EPT violations
+                        if let zerovisor_hal::virtualization::VmExitReason::NestedPageFault { guest_phys, guest_virt, error_code } = reason {
+                            security::record_event(SecurityEvent::EptViolation {
+                                guest_pa: guest_phys,
+                                guest_va: guest_virt,
+                                error: error_code,
+                            });
                         }
                     }
                     Err(_) => {

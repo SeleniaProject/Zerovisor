@@ -1,4 +1,3 @@
-
 //! Intel VMX (VT-x) virtualization engine implementation for Zerovisor
 //!
 //! This module supplies a **complete** implementation of the `VirtualizationEngine`
