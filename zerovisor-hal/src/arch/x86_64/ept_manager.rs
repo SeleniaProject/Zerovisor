@@ -190,6 +190,47 @@ impl EptHierarchy {
         Ok(Box::leak(boxed))
     }
 
+    /// Change permissions of an already-mapped guest region. Only RWX bits are modified.
+    pub fn set_permissions(&mut self, gpa: u64, size: u64, flags: EptFlags) -> Result<(), EptError> {
+        if size % 0x1000 != 0 { return Err(EptError::InvalidAlignment); }
+        let pages = size / 0x1000;
+        for i in 0..pages {
+            self.update_perm_single(gpa + i*0x1000, flags)?;
+        }
+        Ok(())
+    }
+
+    fn update_perm_single(&mut self, gpa: u64, flags: EptFlags) -> Result<(), EptError> {
+        let pml4_idx = ((gpa >> 39) & 0x1FF) as usize;
+        let pdpt_idx = ((gpa >> 30) & 0x1FF) as usize;
+        let pd_idx   = ((gpa >> 21) & 0x1FF) as usize;
+        let pt_idx   = ((gpa >> 12) & 0x1FF) as usize;
+
+        unsafe {
+            let pml4 = &mut *self.pml4.as_ptr();
+            let pdpt_phys = pml4.entry(pml4_idx) & 0x000F_FFFF_FFFF_F000;
+            if pdpt_phys == 0 { return Err(EptError::NotMapped); }
+            let pdpt = &mut *(pdpt_phys as *mut EptTable);
+
+            let pd_phys = pdpt.entry(pdpt_idx) & 0x000F_FFFF_FFFF_F000;
+            if pd_phys == 0 { return Err(EptError::NotMapped); }
+            let pd = &mut *(pd_phys as *mut EptTable);
+
+            let pt_phys = pd.entry(pd_idx) & 0x000F_FFFF_FFFF_F000;
+            if pt_phys == 0 { return Err(EptError::NotMapped); }
+            let pt = &mut *(pt_phys as *mut EptTable);
+
+            let entry = pt.entry_mut(pt_idx);
+            if *entry & 1 == 0 { return Err(EptError::NotMapped); }
+
+            // Preserve physical address bits, replace RWX (bits 0-2)
+            let phys_part = *entry & 0xFFFF_FFFF_FFFF_F000u64;
+            let misc_bits = *entry & !(0x7); // keep higher bits like MEM_TYPE,HUGE
+            *entry = phys_part | misc_bits | flags.bits();
+        }
+        Ok(())
+    }
+
     /// Public unmap wrapper (4-KiB granularity for now).
     pub fn unmap(&mut self, gpa: u64, size: u64) -> Result<(), EptError> {
         if size % 0x1000 != 0 { return Err(EptError::InvalidAlignment); }

@@ -66,6 +66,15 @@ pub trait VirtualizationEngine {
     
     /// Unmap guest memory
     fn unmap_guest_memory(&mut self, vm: VmHandle, guest_phys: PhysicalAddress, size: usize) -> Result<(), Self::Error>;
+
+    /// Modify permissions of an existing guest physical mapping. The region
+    /// must already be mapped; this call changes READ/WRITE/EXEC bits without
+    /// altering the host physical address.
+    fn modify_guest_memory(&mut self,
+                           vm: VmHandle,
+                           guest_phys: PhysicalAddress,
+                           size: usize,
+                           new_flags: MemoryFlags) -> Result<(), Self::Error>;
 }
 
 /// Virtual machine configuration

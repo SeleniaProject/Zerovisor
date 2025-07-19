@@ -385,6 +385,20 @@ impl VirtualizationEngine for VmxEngine {
         let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
         vm_entry.ept.unmap(gpa, size as u64).map_err(|_| VmxError::EptSetupFailed)
     }
+
+    fn modify_guest_memory(&mut self, vm: VmHandle, gpa: PhysicalAddress, size: usize, new_flags: MemoryFlags) -> Result<(), Self::Error> {
+        let mut vms = VMS.lock();
+        let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
+
+        // Translate MemoryFlags to EptFlags
+        use crate::memory::MemoryFlags as MemF;
+        let mut ept_flags = crate::arch::x86_64::ept::EptFlags::empty();
+        if new_flags.contains(MemF::READABLE) { ept_flags |= crate::arch::x86_64::ept::EptFlags::READ; }
+        if new_flags.contains(MemF::WRITABLE) { ept_flags |= crate::arch::x86_64::ept::EptFlags::WRITE; }
+        if new_flags.contains(MemF::EXECUTABLE) { ept_flags |= crate::arch::x86_64::ept::EptFlags::EXEC; }
+
+        vm_entry.ept.set_permissions(gpa, size as u64, ept_flags).map_err(|_| VmxError::EptSetupFailed)
+    }
 }
 
 impl VmxEngine {
