@@ -35,6 +35,8 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
     pub fn create_vm(&self, cfg: &VmConfig) -> Result<VmHandle, HalError> {
         let mut eng = self.engine.lock();
         let handle = eng.create_vm(cfg)?;
+        // Configure nested paging/EPT for the new VM
+        eng.setup_nested_paging(handle)?;
         self.states.lock().insert(handle, VmState::Created);
         Ok(handle)
     }
