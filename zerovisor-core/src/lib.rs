@@ -28,6 +28,7 @@ pub mod accelerator;
 pub mod cluster;
 pub mod fault;
 pub mod energy;
+pub mod kube_runtime;
 #[cfg(feature = "coq_proofs")]
 pub mod proofs_stub;
 
