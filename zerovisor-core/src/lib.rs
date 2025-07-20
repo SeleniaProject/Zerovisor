@@ -23,13 +23,18 @@ pub mod gpu;
 pub mod crypto;
 pub mod crypto_mem;
 pub mod attestation;
+pub mod microvm;
 
 use zerovisor_hal::{HalError, init as hal_init};
+use security::init as security_init;
 
 /// Initialize the Zerovisor hypervisor
 pub fn init() -> Result<(), ZerovisorError> {
     // Initialize the Hardware Abstraction Layer
     hal_init().map_err(ZerovisorError::HalError)?;
+
+    // Initialize quantum-resistant security engine
+    security_init().map_err(|_| ZerovisorError::SecurityInitializationFailed)?;
     
     // Initialize core hypervisor components
     hypervisor::init()?;
@@ -48,6 +53,8 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
     // Initialize hypervisor with actual memory map
     hypervisor::init_with_map(memory_map)?;
 
+    security_init().map_err(|_| ZerovisorError::SecurityInitializationFailed)?;
+
     gpu::init()?;
 
     Ok(())
@@ -61,6 +68,7 @@ pub enum ZerovisorError {
     InvalidConfiguration,
     ResourceExhausted,
     SecurityViolation,
+    SecurityInitializationFailed,
 }
 
 impl From<HalError> for ZerovisorError {
