@@ -22,7 +22,32 @@ const VEC_MACHINE_CHECK: InterruptVector = 0x12; // example vector
 
 /// Initialize high-availability subsystem.
 pub fn init() {
-    // TODO: wire-up to architecture-specific interrupt controller.
+    // Register machine-check / fatal fault interrupt so that Zerovisor can
+    // detect unrecoverable hardware errors and initiate fail-over.  The
+    // implementation is architecture-specific;  we currently support
+    // x86_64 via the APIC/IDT path.
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        use zerovisor_hal::interrupts::{InterruptController, InterruptFlags, InterruptContext, vectors};
+        use zerovisor_x86_64::interrupts::X86InterruptController;
+
+        static mut CTRL: Option<X86InterruptController> = None;
+
+        // SAFETY: single-threaded init during boot.
+        let mut ctrl = X86InterruptController::init().expect("init ic");
+
+        // Wrapper converting HAL context into local ISR.
+        fn handler(_vec: u8, _ctx: &InterruptContext) {
+            hw_fault_isr(vectors::MACHINE_CHECK, 0);
+        }
+
+        ctrl.register_handler(vectors::MACHINE_CHECK, handler).expect("reg mce isr");
+        ctrl.enable_interrupt(vectors::MACHINE_CHECK).ok();
+        ctrl.enable_interrupts();
+
+        unsafe { CTRL = Some(ctrl); }
+    }
 }
 
 /// Interrupt handler that records fatal hardware fault and triggers fail-over.
@@ -42,7 +67,10 @@ fn isolate_faulty_core() {
 
 /// Notify cluster peers to take over leadership / workload.
 fn trigger_failover() {
-    // Placeholder: real implementation would notify cluster peers.
+    // TODO: integrate with `ClusterManager` once remote nodes are present.
+    // For now we simply halt local scheduling to avoid cascading failures.
+    crate::log!("Hardware fault detected – entering fail-over dead-loop");
+    loop { core::hint::spin_loop(); }
 }
 
 /// Perform lightweight integrity checks on critical data structures.

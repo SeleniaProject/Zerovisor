@@ -12,6 +12,7 @@ use crate::scheduler::{self, register_vcpu, pick_next, quantum_expired, SchedEnt
 use crate::{log, monitor};
 use crate::console;
 use crate::security::{self, SecurityEvent};
+use crate::zero_copy::ZeroCopyBuffer;
 // logging macro is imported via crate root
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +55,18 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
         // スケジューラへ登録 (デフォルト優先度 128)。
         register_vcpu(vm, vcpu, 128, None);
         monitor::vm_started();
+
+        // Map a zero-copy shared buffer to the new VM (demo for Task 14.1).
+        static mut SHARED_PAGE: [u8; 4096] = [0u8; 4096];
+        let phys = unsafe { &SHARED_PAGE as *const _ as u64 };
+        let virt = phys;
+        let zbuf = ZeroCopyBuffer::new(phys, virt, 4096);
+        if let Err(e) = zbuf.share_with_guest(&mut *eng, vm, 0x1000_0000) {
+            log!("zero-copy buffer mapping failed {:?}", e);
+        } else {
+            monitor::add_shared_pages(1);
+        }
+
         self.states.lock().insert(vm, VmState::Running);
         Ok(())
     }
