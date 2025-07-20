@@ -25,6 +25,7 @@ pub mod crypto_mem;
 pub mod attestation;
 pub mod microvm;
 pub mod accelerator;
+pub mod ha;
 pub mod cluster;
 pub mod fault;
 pub mod energy;
@@ -56,6 +57,9 @@ pub fn init() -> Result<(), ZerovisorError> {
     
     accelerator_init()?;
 
+    // Initialize high-availability subsystem (fault detection & fail-over)
+    ha::init();
+
     Ok(())
 }
 
@@ -70,6 +74,8 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
     security_init().map_err(|_| ZerovisorError::SecurityInitializationFailed)?;
 
     accelerator_init()?;
+
+    ha::init();
 
     Ok(())
 }
