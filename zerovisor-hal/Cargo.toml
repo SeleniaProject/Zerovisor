@@ -10,7 +10,7 @@ static_assertions = { workspace = true }
 spin = { workspace = true }
 x86_64 = { workspace = true }
 x86 = { workspace = true }
-heapless = { version = "0.8", default-features = false, features = ["fnv"] }
+heapless = "0.8"
 
 # Architecture-specific optional dependencies
 
