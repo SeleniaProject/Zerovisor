@@ -11,6 +11,7 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 use spin::Mutex;
+use core::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
 use zerovisor_hal::virtualization::{VmHandle, VcpuHandle};
 
@@ -114,6 +115,8 @@ impl QuantumScheduler {
             ent_mut.priority = 255;
             // 再投入
             self.ready_queue.push(ent_mut);
+            // 統計
+            DEADLINE_MISSES.fetch_add(1, AtomicOrdering::Relaxed);
             // セキュリティ / RT 警告
             security::record_event(SecurityEvent::RealTimeDeadlineMiss {
                 vm: ent.vm,
@@ -182,6 +185,7 @@ impl QuantumScheduler {
 // --------------------------------------------------------------------------
 
 static SCHEDULER: Mutex<QuantumScheduler> = Mutex::new(QuantumScheduler::new());
+static DEADLINE_MISSES: AtomicU64 = AtomicU64::new(0);
 
 /// サブシステム初期化 (Task 5.1)。
 pub fn init() -> Result<(), ZerovisorError> {
@@ -205,6 +209,43 @@ pub fn quantum_expired(entity: SchedEntity) { SCHEDULER.lock().handle_quantum_ex
 pub fn record_exec_time(entity: SchedEntity, exec_ns: u64) {
     SCHEDULER.lock().record_exec_time(entity, exec_ns);
 }
+
+/// リアルタイムデッドラインミス総数を取得。
+pub fn deadline_miss_count() -> u64 { DEADLINE_MISSES.load(AtomicOrdering::Relaxed) }
+
+/// 優先度継承 (priority inheritance)。待機 VCPU の priority を一時的に引き上げる。
+pub fn inherit_priority(vm: VmHandle, vcpu: VcpuHandle, new_priority: u8) {
+    let mut sched = SCHEDULER.lock();
+    // 探索: ready_queue および real_time_queue からエンティティを検索し更新。
+    let mut updated = false;
+    let mut tmp: Vec<SchedEntity> = Vec::new();
+    while let Some(ent) = sched.ready_queue.pop() {
+        if ent.vm == vm && ent.vcpu == vcpu {
+            let mut ent_new = ent;
+            if new_priority > ent_new.priority { ent_new.priority = new_priority; }
+            tmp.push(ent_new);
+            updated = true;
+        } else {
+            tmp.push(ent);
+        }
+    }
+    for e in tmp { sched.ready_queue.push(e); }
+    // 同様に RT キューも
+    let mut rt_tmp: Vec<SchedEntity> = Vec::new();
+    while let Some(ent) = sched.real_time_queue.pop() {
+        if ent.vm == vm && ent.vcpu == vcpu {
+            let mut ent_new = ent;
+            if new_priority > ent_new.priority { ent_new.priority = new_priority; }
+            rt_tmp.push(ent_new);
+            updated = true;
+        } else { rt_tmp.push(ent); }
+    }
+    for e in rt_tmp { sched.real_time_queue.push(e); }
+    if updated {
+        // ログ用に SecurityEvent 出力 (低優先度→高への継承は DoS 対策監査対象)
+        security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: 0, wcet_ns: None });
+    }
+ }
 
 // --------------------------------------------------------------------------
 // 補助関数
