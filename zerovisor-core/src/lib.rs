@@ -33,6 +33,8 @@ pub mod wasm_runtime;
 pub mod debug_stub;
 #[cfg(feature = "coq_proofs")]
 pub mod proofs_stub;
+#[cfg(feature = "formal_verification")]
+pub mod formal_tests;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
