@@ -24,3 +24,6 @@ wasmi = { version = "0.29", default-features = false }
 default = []
 formal_verification = []
 coq_proofs = []
+
+[dev-dependencies]
+proptest = "1.4"
