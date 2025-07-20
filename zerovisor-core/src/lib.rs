@@ -25,6 +25,8 @@ pub mod crypto_mem;
 pub mod attestation;
 pub mod microvm;
 pub mod accelerator;
+#[cfg(feature = "coq_proofs")]
+pub mod proofs_stub;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
