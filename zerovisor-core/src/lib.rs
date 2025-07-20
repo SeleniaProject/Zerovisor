@@ -27,6 +27,7 @@ pub mod microvm;
 pub mod accelerator;
 pub mod ha;
 pub mod migration;
+pub mod zero_copy;
 pub mod cluster;
 pub mod fault;
 pub mod energy;
