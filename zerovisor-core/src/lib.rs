@@ -27,6 +27,7 @@ pub mod microvm;
 pub mod accelerator;
 pub mod cluster;
 pub mod fault;
+pub mod energy;
 #[cfg(feature = "coq_proofs")]
 pub mod proofs_stub;
 
