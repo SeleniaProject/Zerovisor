@@ -3,8 +3,10 @@
 //! guarantee <10 ns average latency on modern CPUs.
 
 use super::vmcs::{ActiveVmcs, VmcsField};
-use super::vmx::{VmxEngine, VmxError};
-use crate::virtualization::{VmExitAction, VcpuHandle};
+use crate::virtualization::arch::vmx::VmxEngine;
+use super::vmx::VmxError;
+use crate::virtualization::{VmExitAction, VcpuHandle, VmExitReason};
+use crate::arch::x86_64::vmx::cached_cpuid;
 
 // Type alias for a pointer to a fast handler function.
 pub type FastHandler = fn(&mut VmxEngine, VcpuHandle, &mut ActiveVmcs) -> Result<VmExitAction, VmxError>;
@@ -52,16 +54,7 @@ fn handle_io(engine: &mut VmxEngine, vcpu: VcpuHandle, vmcs: &mut ActiveVmcs) ->
         return Ok(VmExitAction::Continue);
     }
     // Defer unknown ports
-    engine.handle_vm_exit_slow(vcpu, super::VmExitReason::IoInstruction { port, size: sz, write: wr })
-}
-
-/// EPT violation fast path – identity-map faulting 4 KiB page.
-#[inline(always)]
-fn handle_ept(engine: &mut VmxEngine, _vcpu: VcpuHandle, vmcs: &mut ActiveVmcs) -> Result<VmExitAction, VmxError> {
-    use crate::virtualization::MemoryFlags;
-    let gpa = vmcs.read(VmcsField::GUEST_PHYS_ADDR);
-    engine.map_guest_memory_current_vm(gpa, gpa, 0x1000, MemoryFlags::empty())?;
-    Ok(VmExitAction::Continue)
+    engine.handle_vm_exit_slow(vcpu, VmExitReason::IoInstruction { port, size: sz, write: wr })
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +72,6 @@ pub const HANDLERS: &[Option<FastHandler>] = {
         /* 13-29*/ NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE,
         /* 30   */ Some(handle_io),
         /* 31-47*/ NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE,
-        /* 48   */ Some(handle_ept),
+        /* 48   */ NONE,
     ]
 }; 

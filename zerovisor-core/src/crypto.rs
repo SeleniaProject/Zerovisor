@@ -10,7 +10,10 @@ use alloc::vec::Vec;
 
 use pqcrypto_kyber::{kyber512, kyber768};
 use pqcrypto_dilithium::{dilithium3, dilithium5};
-use pqcrypto_sphincsplus::sphincssha2128s;
+use pqcrypto_sphincsplus::sphincsshake128ssimple as sphincs128s;
+// Bring trait methods (as_bytes/from_bytes) into scope.
+use pqcrypto_traits::kem::{Ciphertext as KemCiphertext, PublicKey as KemPublicKey, SecretKey as KemSecretKey, SharedSecret};
+use pqcrypto_traits::sign::{PublicKey as SigPublicKey, SecretKey as SigSecretKey, DetachedSignature as SigDetachedSignature, SignedMessage};
 
 /// Kyber keypair (public + secret)
 #[derive(Clone)]
@@ -88,18 +91,18 @@ pub struct SphincsKeypair {
 }
 
 pub fn sphincs_generate() -> SphincsKeypair {
-    let (pk, sk) = sphincssha2128s::keypair();
+    let (pk, sk) = sphincs128s::keypair();
     SphincsKeypair { public: pk.as_bytes().to_vec(), secret: sk.as_bytes().to_vec() }
 }
 
 pub fn sphincs_sign(secret_key: &[u8], message: &[u8]) -> Vec<u8> {
-    let sk = sphincssha2128s::SecretKey::from_bytes(secret_key).expect("invalid sk");
-    let sig = sphincssha2128s::sign_detached(message, &sk);
+    let sk = sphincs128s::SecretKey::from_bytes(secret_key).expect("invalid sk");
+    let sig = sphincs128s::sign_detached(message, &sk);
     sig.as_bytes().to_vec()
 }
 
 pub fn sphincs_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bool {
-    let pk = sphincssha2128s::PublicKey::from_bytes(public_key).expect("invalid pk");
-    let sig = sphincssha2128s::DetachedSignature::from_bytes(signature).expect("invalid sig");
-    sphincssha2128s::verify_detached_signature(&sig, message, &pk).is_ok()
+    let pk = sphincs128s::PublicKey::from_bytes(public_key).expect("invalid pk");
+    let sig = sphincs128s::DetachedSignature::from_bytes(signature).expect("invalid sig");
+    sphincs128s::verify_detached_signature(&sig, message, &pk).is_ok()
 } 

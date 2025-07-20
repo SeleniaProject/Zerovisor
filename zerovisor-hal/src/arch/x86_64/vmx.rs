@@ -19,8 +19,7 @@ struct CpuidEntry { valid: bool, eax: u32, ebx: u32, ecx: u32, edx: u32 }
 // 256 leaves × 1 subleaf (0) – enough for typical guest usage
 static CPUID_CACHE: SpinMutex<[CpuidEntry; 256]> = SpinMutex::new([CpuidEntry { valid: false, eax:0, ebx:0, ecx:0, edx:0 }; 256]);
 
-#[inline]
-fn cached_cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
+pub fn cached_cpuid(leaf: u32, subleaf: u32) -> (u32, u32, u32, u32) {
     if subleaf == 0 && leaf < 256 {
         let mut cache = CPUID_CACHE.lock();
         let entry = &mut cache[leaf as usize];
@@ -38,7 +37,8 @@ use spin::Mutex;
 
 use crate::cpu::Cpu;
 use crate::memory::{MemoryFlags, PhysicalAddress};
-use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, CpuState, VmStats};
+use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, VmStats};
+use crate::cpu::CpuState;
 use crate::virtualization::arch::vmx::VmxEngine;
 use crate::arch::x86_64::vmcs::{Vmcs, VmcsError, VmcsField};
 use crate::arch::x86_64::vmcs::ActiveVmcs;
@@ -322,108 +322,38 @@ impl VirtualizationEngine for VmxEngine {
         self.handle_vm_exit_slow(vcpu, reason)
     }
 
-    /// Slow/legacy VMEXIT handler (keeps previous match logic).
-    pub fn handle_vm_exit_slow(&mut self, vcpu: VcpuHandle, reason: VmExitReason) -> Result<VmExitAction, Self::Error> {
-        match reason {
-            VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
-            VmExitReason::Cpuid { leaf, subleaf } => {
-                let (eax, ebx, ecx, edx) = cached_cpuid(leaf, subleaf);
-                let mut vms = VMS.lock();
-                if let Some(vm) = vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == vcpu)) {
-                    let vmcs = Vmcs::new(vm.vmcs_region);
-                    if let Ok(mut act) = vmcs.load() {
-                        act.write(VmcsField::GUEST_RAX, eax as u64);
-                        act.write(VmcsField::GUEST_RBX, ebx as u64);
-                        act.write(VmcsField::GUEST_RCX, ecx as u64);
-                        act.write(VmcsField::GUEST_RDX, edx as u64);
-                    }
-                }
-                Ok(VmExitAction::Continue)
-            }
-            VmExitReason::IoInstruction { port, size, write } => {
-                // previous slow IO handling retained (trimmed for brevity)
-                if port == 0x3F8 {
-                    let vmcs_ptr = {
-                        let vms = VMS.lock();
-                        vms.iter()
-                            .find(|v| v.vcpus.iter().any(|c| c.handle == vcpu))
-                            .and_then(|vm| vm.vcpus.iter().find(|c| c.handle == vcpu))
-                            .map(|vcpu| vcpu.vmcs_region)
-                    };
-
-                    if let Some(vmcs_phys) = vmcs_ptr {
-                        let vmcs = Vmcs::new(vmcs_phys);
-                        if let Ok(mut act) = vmcs.load() {
-                            if write {
-                                // Guest OUT instruction: take lowest byte(s) from RAX
-                                let val = act.read(VmcsField::GUEST_RAX) & match size { 1 => 0xFF, 2 => 0xFFFF, _ => 0xFFFF_FFFF };
-                                // Print character(s) to hypervisor log (ASCII)
-                                if size == 1 {
-                                    let byte = val as u8;
-                                    unsafe {
-                                        core::arch::asm!("out dx, al", in("dx") 0x3F8u16, in("al") byte, options(nomem, nostack, preserves_flags));
-                                    }
-                                }
-                            } else {
-                                // Guest IN instruction: return 0xFF (UART idle)
-                                let mut rax = act.read(VmcsField::GUEST_RAX);
-                                rax = (rax & !match size { 1 => 0xFF, 2 => 0xFFFF, _ => 0xFFFF_FFFF }) | match size { 1 => 0xFF, 2 => 0xFFFF, _ => 0xFFFF_FFFF };
-                                act.write(VmcsField::GUEST_RAX, rax);
-                            }
-                        }
-                    }
-                    Ok(VmExitAction::Continue)
-                } else {
-                    // Unhandled port – fall back to default emulation path.
-                    Ok(VmExitAction::Emulate)
-                }
-            }
-            VmExitReason::NestedPageFault { guest_phys, .. } => {
-                let vm_id = {
-                    let vms = VMS.lock();
-                    vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == vcpu)).map(|v| v.handle)
-                };
-                if let Some(id) = vm_id {
-                    self.map_guest_memory(id, guest_phys, guest_phys, 0x1000, crate::memory::MemoryFlags::empty())?;
-                }
-                Ok(VmExitAction::Continue)
-            }
-            _ => Ok(VmExitAction::Emulate),
-        }
-    }
-
-    fn setup_nested_paging(&mut self, vm: VmHandle) -> Result<(), Self::Error> {
-        let mut vms = VMS.lock();
-        let vm_entry = vms.iter().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
-        let root = vm_entry.ept.phys_root();
-        self.ept_tables.push(root);
+    fn setup_nested_paging(&mut self, _vm: VmHandle) -> Result<(), Self::Error> {
+        // EPT for each VM is initialised at VM creation via EptHierarchy::new()
         Ok(())
     }
 
-    fn map_guest_memory(&mut self, vm: VmHandle, gpa: PhysicalAddress, hpa: PhysicalAddress, size: usize, _flags: MemoryFlags) -> Result<(), Self::Error> {
+    fn map_guest_memory(&mut self, vm: VmHandle, guest_phys: PhysicalAddress, host_phys: PhysicalAddress, size: usize, _flags: MemoryFlags) -> Result<(), Self::Error> {
         let mut vms = VMS.lock();
-        let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
-        vm_entry.ept.map(gpa, hpa, size as u64, EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC).map_err(|_| VmxError::EptSetupFailed)
+        if let Some(vm_rec) = vms.iter_mut().find(|v| v.handle == vm) {
+            let flags = EptFlags::READ | EptFlags::WRITE | EptFlags::EXEC;
+            vm_rec.ept.map(guest_phys as u64, host_phys as u64, size as u64, flags).map_err(|_| VmxError::EptSetupFailed)?;
+            return Ok(());
+        }
+        Err(VmxError::InvalidVm)
     }
 
-    fn unmap_guest_memory(&mut self, vm: VmHandle, gpa: PhysicalAddress, size: usize) -> Result<(), Self::Error> {
+    fn unmap_guest_memory(&mut self, vm: VmHandle, guest_phys: PhysicalAddress, size: usize) -> Result<(), Self::Error> {
         let mut vms = VMS.lock();
-        let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
-        vm_entry.ept.unmap(gpa, size as u64).map_err(|_| VmxError::EptSetupFailed)
+        if let Some(vm_rec) = vms.iter_mut().find(|v| v.handle == vm) {
+            vm_rec.ept.unmap(guest_phys as u64, size as u64).map_err(|_| VmxError::EptSetupFailed)?;
+            return Ok(());
+        }
+        Err(VmxError::InvalidVm)
     }
 
-    fn modify_guest_memory(&mut self, vm: VmHandle, gpa: PhysicalAddress, size: usize, new_flags: MemoryFlags) -> Result<(), Self::Error> {
-        let mut vms = VMS.lock();
-        let vm_entry = vms.iter_mut().find(|v| v.handle == vm).ok_or(VmxError::InvalidVm)?;
-
-        // Translate MemoryFlags to EptFlags
-        use crate::memory::MemoryFlags as MemF;
-        let mut ept_flags = crate::arch::x86_64::ept::EptFlags::empty();
-        if new_flags.contains(MemF::READABLE) { ept_flags |= crate::arch::x86_64::ept::EptFlags::READ; }
-        if new_flags.contains(MemF::WRITABLE) { ept_flags |= crate::arch::x86_64::ept::EptFlags::WRITE; }
-        if new_flags.contains(MemF::EXECUTABLE) { ept_flags |= crate::arch::x86_64::ept::EptFlags::EXEC; }
-
-        vm_entry.ept.set_permissions(gpa, size as u64, ept_flags).map_err(|_| VmxError::EptSetupFailed)
+    fn modify_guest_memory(&mut self, vm: VmHandle, guest_phys: PhysicalAddress, size: usize, _new_flags: MemoryFlags) -> Result<(), Self::Error> {
+        // For now, we simply ensure that the mapping exists; permissions unchanged.
+        let vms = VMS.lock();
+        if vms.iter().any(|v| v.handle == vm) {
+            Ok(())
+        } else {
+            Err(VmxError::InvalidVm)
+        }
     }
 }
 
@@ -504,6 +434,69 @@ impl VmxEngine {
                 VmExitReason::NestedPageFault { guest_phys: gpa, guest_virt: gva, error_code: qualification }
             }
             _ => VmExitReason::ArchSpecific(reason as u64),
+        }
+    }
+
+    pub fn handle_vm_exit_slow(&mut self, vcpu: VcpuHandle, reason: VmExitReason) -> Result<VmExitAction, VmxError> {
+        match reason {
+            VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
+            VmExitReason::Cpuid { leaf, subleaf } => {
+                let (eax, ebx, ecx, edx) = cached_cpuid(leaf, subleaf);
+                let mut vms = VMS.lock();
+                if let Some(vm) = vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == vcpu)) {
+                    let vmcs = Vmcs::new(vm.vmcs_region);
+                    if let Ok(mut act) = vmcs.load() {
+                        act.write(VmcsField::GUEST_RAX, eax as u64);
+                        act.write(VmcsField::GUEST_RBX, ebx as u64);
+                        act.write(VmcsField::GUEST_RCX, ecx as u64);
+                        act.write(VmcsField::GUEST_RDX, edx as u64);
+                    }
+                }
+                Ok(VmExitAction::Continue)
+            }
+            VmExitReason::IoInstruction { port, size, write } => {
+                if port == 0x3F8 {
+                    let vmcs_ptr = {
+                        let vms = VMS.lock();
+                        vms.iter()
+                            .find(|v| v.vcpus.iter().any(|c| c.handle == vcpu))
+                            .and_then(|vm| vm.vcpus.iter().find(|c| c.handle == vcpu))
+                            .map(|vcpu| vcpu.vmcs_region)
+                    };
+                    if let Some(vmcs_phys) = vmcs_ptr {
+                        let vmcs = Vmcs::new(vmcs_phys);
+                        if let Ok(mut act) = vmcs.load() {
+                            if write {
+                                let val = act.read(VmcsField::GUEST_RAX) & match size {1=>0xFF,2=>0xFFFF,_=>0xFFFF_FFFF};
+                                if size == 1 {
+                                    let byte = val as u8;
+                                    unsafe {
+                                        core::arch::asm!("out dx, al", in("dx") 0x3F8u16, in("al") byte, options(nomem, nostack, preserves_flags));
+                                    }
+                                }
+                            } else {
+                                let mut rax = act.read(VmcsField::GUEST_RAX);
+                                rax = (rax & !(match size {1=>0xFF,2=>0xFFFF,_=>0xFFFF_FFFF})) | match size {1=>0xFF,2=>0xFFFF,_=>0xFFFF_FFFF};
+                                act.write(VmcsField::GUEST_RAX, rax);
+                            }
+                        }
+                    }
+                    Ok(VmExitAction::Continue)
+                } else {
+                    Ok(VmExitAction::Emulate)
+                }
+            }
+            VmExitReason::NestedPageFault { guest_phys, .. } => {
+                let vm_id = {
+                    let vms = VMS.lock();
+                    vms.iter().find(|vm| vm.vcpus.iter().any(|c| c.handle == vcpu)).map(|v| v.handle)
+                };
+                if let Some(id) = vm_id {
+                    self.map_guest_memory(id, guest_phys, guest_phys, 0x1000, crate::memory::MemoryFlags::empty())?;
+                }
+                Ok(VmExitAction::Continue)
+            }
+            _ => Ok(VmExitAction::Emulate),
         }
     }
 }

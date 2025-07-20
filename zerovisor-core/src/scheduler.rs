@@ -8,6 +8,7 @@ extern crate alloc;
 
 use alloc::collections::BinaryHeap;
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 use core::cmp::Ordering;
 use spin::Mutex;
 

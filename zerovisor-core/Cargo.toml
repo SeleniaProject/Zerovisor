@@ -10,11 +10,13 @@ bitflags = { workspace = true }
 static_assertions = { workspace = true }
 zerovisor-hal = { path = "../zerovisor-hal" }
 sha2 = { workspace = true }
-pqcrypto-kyber = { version = "0.5.0", default-features = false, features = ["std"] }
-pqcrypto-dilithium = { version = "0.5.0", default-features = false, features = ["std"] }
-pqcrypto-sphincsplus = { version = "0.5.0", default-features = false, features = ["std"] }
+pqcrypto-kyber = { version = "0.5.0", default-features = false }
+pqcrypto-dilithium = { version = "0.5.0", default-features = false }
+pqcrypto-sphincsplus = { version = "0.5.0", default-features = false }
 aes = { version = "0.8", default-features = false }
 cipher = { version = "0.4", default-features = false, features = ["alloc"] }
+pqcrypto-traits = "0.3"
+xts-mode = "0.5.1"
 
 [features]
 default = []

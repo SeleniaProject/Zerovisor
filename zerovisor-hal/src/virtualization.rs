@@ -9,10 +9,6 @@ use bitflags::bitflags;
 use crate::cpu::CpuState;
 use crate::memory::{MemoryFlags, PhysicalAddress, VirtualAddress};
 
-#[cfg(target_arch = "x86_64")]
-#[path = "arch/x86_64/vmx.rs"]
-mod x86_vmx_engine_impl;
-
 /// Virtual machine handle
 pub type VmHandle = u32;
 
@@ -298,8 +294,8 @@ pub struct VmStats {
     /// Total VM exits
     pub total_exits: u64,
     
-    /// VM exit breakdown by reason
-    pub exit_counts: [u64; 32],
+    /// VM exit breakdown by reason (supports up to 64 architectural reasons)
+    pub exit_counts: [u64; 64],
     
     /// Total execution time in nanoseconds
     pub total_exec_time_ns: u64,
@@ -319,22 +315,33 @@ pub struct VmStats {
     /// Number of hypercalls
     pub hypercalls: u64,
 
-    // Internal accumulator for average calculation
-    total_latency_cycles: u128,
+    // Internal accumulators for average calculation
+    total_exit_time_ns_acc: u128,
 }
 
 impl VmStats {
     /// Record a single VMEXIT latency in cycles and update statistics.
+    #[inline]
     pub fn record_exit(&mut self, reason_index: usize, latency_cycles: u64) {
+        // Constants: adjust if CPU frequency detection is implemented
+        const CYCLES_PER_NS: u64 = 3; // 3 GHz default (≈0.333 ns per cycle)
+
+        let latency_ns = latency_cycles / CYCLES_PER_NS;
+
         self.total_exits += 1;
+
         if reason_index < self.exit_counts.len() {
             self.exit_counts[reason_index] += 1;
         }
-        self.total_latency_cycles += latency_cycles as u128;
-        if latency_cycles > self.max_exit_latency_ns {
-            self.max_exit_latency_ns = latency_cycles;
+
+        self.total_exit_time_ns += latency_ns;
+        self.total_exit_time_ns_acc += latency_ns as u128;
+
+        if latency_ns > self.max_exit_latency_ns {
+            self.max_exit_latency_ns = latency_ns;
         }
-        self.avg_exit_latency_ns = (self.total_latency_cycles / self.total_exits as u128) as u64;
+
+        self.avg_exit_latency_ns = (self.total_exit_time_ns_acc / self.total_exits as u128) as u64;
     }
 }
 
