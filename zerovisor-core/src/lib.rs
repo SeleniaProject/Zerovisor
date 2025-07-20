@@ -24,9 +24,11 @@ pub mod crypto;
 pub mod crypto_mem;
 pub mod attestation;
 pub mod microvm;
+pub mod accelerator;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
+use accelerator::init as accelerator_init;
 
 /// Initialize the Zerovisor hypervisor
 pub fn init() -> Result<(), ZerovisorError> {
@@ -42,6 +44,8 @@ pub fn init() -> Result<(), ZerovisorError> {
     // Initialize GPU virtualization subsystem
     gpu::init()?;
     
+    accelerator_init()?;
+
     Ok(())
 }
 
@@ -55,7 +59,7 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
 
     security_init().map_err(|_| ZerovisorError::SecurityInitializationFailed)?;
 
-    gpu::init()?;
+    accelerator_init()?;
 
     Ok(())
 }
@@ -69,6 +73,7 @@ pub enum ZerovisorError {
     ResourceExhausted,
     SecurityViolation,
     SecurityInitializationFailed,
+    AcceleratorInitializationFailed,
 }
 
 impl From<HalError> for ZerovisorError {
