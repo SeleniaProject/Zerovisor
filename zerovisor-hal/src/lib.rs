@@ -62,3 +62,13 @@ pub enum HalError {
     InitializationFailed,
     InvalidConfiguration,
 }
+
+/// Return architecture-specific DVFS + thermal sensor interfaces when available.
+pub fn power_interfaces() -> Option<(&'static dyn DvfsController, &'static dyn ThermalSensor)> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        return Some(arch::x86_64::power::interfaces());
+    }
+    #[allow(unreachable_code)]
+    None
+}

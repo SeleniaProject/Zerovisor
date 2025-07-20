@@ -58,7 +58,12 @@ pub fn init() -> Result<(), ZerovisorError> {
 
     // Initialize GPU virtualization subsystem
     gpu::init()?;
-    
+
+    // Initialize environment-adaptive power management.
+    if let Some((dvfs, thermal)) = zerovisor_hal::power_interfaces() {
+        energy::EnergyManager::init(dvfs, thermal);
+    }
+
     accelerator_init()?;
 
     // Invoke formal verification checks when enabled.
@@ -84,6 +89,10 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
     security_init().map_err(|_| ZerovisorError::SecurityInitializationFailed)?;
 
     accelerator_init()?;
+
+    if let Some((dvfs, thermal)) = zerovisor_hal::power_interfaces() {
+        energy::EnergyManager::init(dvfs, thermal);
+    }
 
     #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
     {
