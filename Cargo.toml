@@ -20,7 +20,8 @@ default = []
 [workspace]
 members = [
     "zerovisor-core",
-    "zerovisor-hal"
+    "zerovisor-hal",
+    "zerovisor-sdk"
 ]
 
 [workspace.dependencies]
