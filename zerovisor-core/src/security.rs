@@ -32,6 +32,12 @@ pub enum SecurityEvent {
         vector: u8,
         latency_ns: u64,
     },
+    /// Memory integrity verification failed (encrypted page tampering)
+    MemoryIntegrityViolation {
+        phys_addr: u64,
+        expected_hash: [u8; 32],
+        actual_hash: [u8; 32],
+    },
     // Future event types will follow here.
 }
 

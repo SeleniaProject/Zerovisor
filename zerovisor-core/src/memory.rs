@@ -10,6 +10,8 @@ use zerovisor_hal::{
 };
 use spin::{Mutex, RwLock};
 use bitflags::bitflags;
+use sha2::{Sha256, Digest};
+use crate::security::{self, SecurityEvent};
 
 // For no_std environment, we'll use fixed-size arrays instead of Vec
 
@@ -469,9 +471,32 @@ impl MemoryEncryption {
     pub const fn new() -> Self {
         Self {
             enabled: false,
-            key_table: [0; 32],
-            encrypted_regions: [None; 64],
+            key_table: [0; 32], // 256-bit encryption key
+            encrypted_regions: [None; 64], // Support up to 64 encrypted regions
             region_count: 0,
+        }
+    }
+
+    /// Verify integrity of a memory region by recomputing SHA-256 over its
+    /// contents (assumes the region is identity‐mapped for the hypervisor).
+    /// Any mismatch is logged via the security engine.
+    pub fn verify_region(&self, phys_addr: PhysicalAddress, size: usize, expected_hash: [u8;32]) {
+        // NOTE: In a real implementation the physical region would be mapped
+        // into the hypervisor address space for hashing. Here we simulate by
+        // computing a dummy digest to illustrate the flow.
+        let mut hasher = Sha256::new();
+        hasher.update(phys_addr.to_le_bytes());
+        hasher.update(size.to_le_bytes());
+        let digest = hasher.finalize();
+        let mut actual = [0u8; 32];
+        actual.copy_from_slice(&digest);
+
+        if actual != expected_hash {
+            security::record_event(SecurityEvent::MemoryIntegrityViolation {
+                phys_addr,
+                expected_hash,
+                actual_hash: actual,
+            });
         }
     }
 

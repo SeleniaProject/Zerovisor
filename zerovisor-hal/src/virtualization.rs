@@ -289,7 +289,7 @@ pub enum VmExitAction {
 }
 
 /// VM execution statistics
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct VmStats {
     /// Total VM exits
     pub total_exits: u64,
@@ -342,6 +342,22 @@ impl VmStats {
         }
 
         self.avg_exit_latency_ns = (self.total_exit_time_ns_acc / self.total_exits as u128) as u64;
+    }
+}
+
+impl Default for VmStats {
+    fn default() -> Self {
+        Self {
+            total_exits: 0,
+            exit_counts: [0u64; 64],
+            total_exec_time_ns: 0,
+            total_exit_time_ns: 0,
+            avg_exit_latency_ns: 0,
+            max_exit_latency_ns: 0,
+            nested_page_faults: 0,
+            hypercalls: 0,
+            total_exit_time_ns_acc: 0,
+        }
     }
 }
 

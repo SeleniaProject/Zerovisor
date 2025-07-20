@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 
 use pqcrypto_kyber::{kyber512, kyber768};
 use pqcrypto_dilithium::{dilithium3, dilithium5};
-use pqcrypto_sphincsplus::sphincsshake128ssimple as sphincs128s;
+use pqcrypto_sphincsplus::sphincssha256128ssimple as sphincs128s;
 // Bring trait methods (as_bytes/from_bytes) into scope.
 use pqcrypto_traits::kem::{Ciphertext as KemCiphertext, PublicKey as KemPublicKey, SecretKey as KemSecretKey, SharedSecret};
 use pqcrypto_traits::sign::{PublicKey as SigPublicKey, SecretKey as SigSecretKey, DetachedSignature as SigDetachedSignature, SignedMessage};
@@ -97,7 +97,7 @@ pub fn sphincs_generate() -> SphincsKeypair {
 
 pub fn sphincs_sign(secret_key: &[u8], message: &[u8]) -> Vec<u8> {
     let sk = sphincs128s::SecretKey::from_bytes(secret_key).expect("invalid sk");
-    let sig = sphincs128s::sign_detached(message, &sk);
+    let sig = sphincs128s::detached_sign(message, &sk);
     sig.as_bytes().to_vec()
 }
 
