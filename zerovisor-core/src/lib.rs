@@ -38,6 +38,8 @@ pub mod debug_stub;
 pub mod proofs_stub;
 #[cfg(feature = "formal_verification")]
 pub mod formal_tests;
+#[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
+pub mod formal;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
@@ -59,6 +61,12 @@ pub fn init() -> Result<(), ZerovisorError> {
     
     accelerator_init()?;
 
+    // Invoke formal verification checks when enabled.
+    #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
+    {
+        formal::run_all().map_err(|_| ZerovisorError::FormalVerificationFailed)?;
+    }
+
     // Initialize high-availability subsystem (fault detection & fail-over)
     ha::init();
 
@@ -77,6 +85,11 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
 
     accelerator_init()?;
 
+    #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
+    {
+        formal::run_all().map_err(|_| ZerovisorError::FormalVerificationFailed)?;
+    }
+
     ha::init();
 
     Ok(())
@@ -92,6 +105,8 @@ pub enum ZerovisorError {
     SecurityViolation,
     SecurityInitializationFailed,
     AcceleratorInitializationFailed,
+    #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
+    FormalVerificationFailed,
 }
 
 impl From<HalError> for ZerovisorError {
