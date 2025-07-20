@@ -35,12 +35,21 @@ impl Ord for SchedEntity {
         // BinaryHeap は最大ヒープなので、より高い priority を優先。
         match self.priority.cmp(&other.priority) {
             Ordering::Equal => {
-                // 締切が近い方を優先 (値が小さい)
-                match (self.deadline_ns, other.deadline_ns) {
-                    (Some(a), Some(b)) => b.cmp(&a), // smaller deadline first
+                // まず締切が近い方を優先 (値が小さい)。
+                let deadline_cmp = match (self.deadline_ns, other.deadline_ns) {
+                    (Some(a), Some(b)) => b.cmp(&a), // smaller deadline first (BinaryHeap is max-heap)
                     (Some(_), None) => Ordering::Greater,
                     (None, Some(_)) => Ordering::Less,
                     (None, None) => Ordering::Equal,
+                };
+                if deadline_cmp != Ordering::Equal {
+                    deadline_cmp
+                } else {
+                    // 最終 tie-break: VMID と VCPUID で決定論的に順序付け
+                    match self.vm.cmp(&other.vm) {
+                        Ordering::Equal => self.vcpu.cmp(&other.vcpu),
+                        ord => ord,
+                    }
                 }
             }
             ord => ord,
@@ -151,6 +160,20 @@ impl QuantumScheduler {
         if exec_ns > entry.max_ns { entry.max_ns = exec_ns; }
         entry.total_ns += exec_ns;
         entry.count += 1;
+    }
+
+    /// Analyze collected WCET statistics and return true if any VCPU exceeds `threshold_ns`.
+    pub fn wcet_violations(&self, threshold_ns: u64) -> Vec<(VmHandle, VcpuHandle, u64)> {
+        self.stats
+            .iter()
+            .filter_map(|(&(vm, vcpu), stat)| {
+                if stat.max_ns > threshold_ns {
+                    Some((vm, vcpu, stat.max_ns))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
