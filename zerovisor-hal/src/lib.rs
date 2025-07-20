@@ -14,6 +14,7 @@ pub mod virtualization;
 pub mod cycles;
 pub mod arch; // New architecture-specific module tree
 pub mod gpu;
+pub mod nic;
 pub mod accelerator;
 
 // Re-export core traits
@@ -24,6 +25,7 @@ pub use timer::{Timer, TimerCallback};
 pub use virtualization::{VirtualizationEngine, VmHandle, VmConfig};
 pub use gpu::{GpuVirtualization, GpuDeviceId, GpuConfig, GpuError};
 pub use accelerator::{AcceleratorVirtualization, AcceleratorId, AcceleratorInfo, AcceleratorType, AccelError};
+pub use nic::{HpcNic, NicAttr, NicError, RdmaOpKind, RdmaCompletion};
 
 // Re-export architecture specific CPU implementations when available
 #[cfg(target_arch = "x86_64")]

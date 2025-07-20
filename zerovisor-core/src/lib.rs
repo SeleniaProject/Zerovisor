@@ -25,6 +25,8 @@ pub mod crypto_mem;
 pub mod attestation;
 pub mod microvm;
 pub mod accelerator;
+pub mod cluster;
+pub mod fault;
 #[cfg(feature = "coq_proofs")]
 pub mod proofs_stub;
 
