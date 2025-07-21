@@ -10,9 +10,9 @@
 - [x] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
 
 ## セキュリティ
-- [ ] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
-- [ ] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
-- [ ] Information-flow Analysis: 機密性証明
+- [x] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
+- [x] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
+- [x] Information-flow Analysis: 機密性証明
 
 ## デバイス仮想化
 - [ ] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
