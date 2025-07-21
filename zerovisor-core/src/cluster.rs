@@ -26,10 +26,16 @@ impl<'a> ClusterTransport<'a> {
     pub fn new(nic: &'a dyn HpcNic) -> Self { Self { nic } }
 
     pub fn send(&self, node: NodeId, buf: &[u8]) -> Result<(), NicError> {
-        // Placeholder: remote address derived from node id (demo)
-        let remote_pa = node.0 as u64 * 0x1000;
-        let local_va = buf.as_ptr() as u64;
-        self.nic.post_work_request(0, RdmaOpKind::Write, local_va, remote_pa, buf.len())
+        let mtu = self.nic_attr().mtu as usize;
+        let mut offset = 0usize;
+        while offset < buf.len() {
+            let chunk = core::cmp::min(mtu, buf.len() - offset);
+            let remote_pa = (node.0 as u64) * 0x1_0000_0000 + offset as u64; // 4GB spacing per node
+            let local_va = unsafe { buf.as_ptr().add(offset) as u64 };
+            self.nic.post_work_request(0, RdmaOpKind::Write, local_va, remote_pa, chunk)?;
+            offset += chunk;
+        }
+        Ok(())
     }
 
     pub fn poll(&self) -> Result<Vec<RdmaCompletion>, NicError> {
@@ -130,5 +136,4 @@ impl BftState {
     pub fn handle_msg(&mut self, _src: NodeId, _msg: &ClusterMsg) {
         // TODO: real PBFT state machine. For now we just record votes.
     }
-} 
 } 
