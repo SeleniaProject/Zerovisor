@@ -4,31 +4,34 @@
 
 ## 仮想化コア
 - [x] EptManager: ARM64 / RISC-V 対応と TLB 無効化最適化
-- [x] IOMMU / VT-d: フル統合とデバイスパススルー
-- [x] Live Migration: 差分コピー & 停止時間最小化
-- [x] NUMAOptimizer: 動的最適化アルゴリズム完備
-- [x] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
+- [ ] IOMMU / VT-d: フル統合とデバイスパススルー
+- [ ] Live Migration: 差分コピー & 停止時間最小化
+- [ ] NUMAOptimizer: 動的最適化アルゴリズム完備
+- [ ] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
+- [ ] Cross-Architecture Live Migration: 異種 ISA (x86_64 / ARM64 / RISC-V) 間のライブマイグレーション
 
 ## セキュリティ
-- [x] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
-- [x] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
-- [x] Information-flow Analysis: 機密性証明
+- [ ] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
+- [ ] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
+- [ ] Information-flow Analysis: 機密性証明
+- [ ] Homomorphic Memory Encryption: FHE protected guest memory
 
 ## デバイス仮想化
-- [x] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
-- [x] SR-IOV NIC & Storage デバイスのパススルー
-- [x] Accelerators: RISC-V Vector, AI Engine 対応
+- [ ] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
+- [ ] SR-IOV NIC & Storage デバイスのパススルー
+- [ ] Accelerators: RISC-V Vector, AI Engine 対応
 
 ## 高可用 & 分散
-- [x] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
+- [ ] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
+- [ ] BFT クラスタリング: Byzantine Fault Tolerance
 
 ## エネルギー & 環境
-- [x] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
-- [x] Thermal-aware Scheduler 統合
+- [ ] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
+- [ ] Thermal-aware Scheduler 統合
 
 ## クラウドネイティブ
-- [x] Kubernetes CRI ランタイム統合
-- [x] WASM ランタイム (WASI) + コールドスタート 1 ms
+- [ ] Kubernetes CRI ランタイム統合
+- [ ] WASM ランタイム (WASI) + コールドスタート 1 ms
 
 ## テスト & ベンチ
-- [x] パフォーマンステスト自動化 (VMEXIT < 10ns, VM 起動 < 50ms) 
+- [ ] パフォーマンステスト自動化 (VMEXIT < 10ns, VM 起動 < 50ms) 
