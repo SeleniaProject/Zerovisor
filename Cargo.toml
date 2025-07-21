@@ -13,10 +13,14 @@ path = "src/lib.rs"
 zerovisor-core = { path = "zerovisor-core" }
 zerovisor-hal = { path = "zerovisor-hal" }
 sha2 = { version = "0.10", default-features = false }
-bitvec = "1.0"
+bitvec = "1"
+crc32fast = "1"
+serde = { version = "1", default-features = false, features = ["derive"] }
+wasmi = { version = "0.31", default-features = false }
 
 [features]
 default = []
+experimental = []
 
 [workspace]
 members = [

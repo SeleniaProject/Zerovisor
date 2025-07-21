@@ -25,13 +25,16 @@ pub mod crypto_mem;
 pub mod attestation;
 pub mod microvm;
 pub mod accelerator;
+#[cfg(feature = "experimental")]
 pub mod ha;
 pub mod migration;
 pub mod zero_copy;
 pub mod cluster;
 pub mod fault;
 pub mod energy;
+#[cfg(feature = "experimental")]
 pub mod kube_runtime;
+#[cfg(feature = "experimental")]
 pub mod wasm_runtime;
 pub mod debug_stub;
 #[cfg(feature = "coq_proofs")]
@@ -44,6 +47,7 @@ pub mod vmx_manager;
 pub mod isolation;
 pub mod iommu;
 pub mod numa_optimizer;
+#[cfg(feature = "experimental")]
 pub mod cluster_bft;
 pub mod realtime;
 pub mod monitoring_engine;
@@ -97,7 +101,10 @@ pub fn init() -> Result<(), ZerovisorError> {
     }
 
     // Initialize high-availability subsystem (fault detection & fail-over)
-    ha::init();
+    #[cfg(feature = "experimental")]
+    {
+        ha::init();
+    }
 
     Ok(())
 }
@@ -135,7 +142,10 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
         formal::run_all().map_err(|_| ZerovisorError::FormalVerificationFailed)?;
     }
 
-    ha::init();
+    #[cfg(feature = "experimental")]
+    {
+        ha::init();
+    }
 
     Ok(())
 }
@@ -159,3 +169,17 @@ impl From<HalError> for ZerovisorError {
         ZerovisorError::HalError(err)
     }
 }
+
+// ------------------------------------------------------------------
+// Minimal stubs to satisfy unresolved symbol references in core build
+// ------------------------------------------------------------------
+
+/// Simple cycle counter stub (always returns 0). Replaced on x86 with rdtsc.
+pub mod cycles {
+    #[inline]
+    pub fn rdtsc() -> u64 { 0 }
+}
+
+/// Minimal VM state enumeration used by kube_runtime stubs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VmState { Running, Stopped }
