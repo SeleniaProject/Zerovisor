@@ -12,6 +12,7 @@ use spin::{Mutex, Once};
 use zerovisor_hal::{HpcNic, RdmaOpKind, NicError, RdmaCompletion, NicAttr};
 use postcard::{to_slice, from_bytes};
 use crate::fault::Msg as ClusterMsg;
+use crate::cluster_bft::PbftEngine;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub u32);
@@ -52,6 +53,7 @@ pub struct ClusterManager<'a> {
 }
 
 static CLUSTER_MGR: Once<ClusterManager<'static>> = Once::new();
+static PBFT: Once<PbftEngine<'static>> = Once::new();
 
 impl<'a> ClusterManager<'a> {
     pub fn init(nic: &'a dyn HpcNic, self_id: NodeId) {
@@ -60,6 +62,9 @@ impl<'a> ClusterManager<'a> {
             members: Mutex::new(vec![self_id]),
             leader: Mutex::new(Some(self_id)),
         });
+        // Initialize PBFT engine now that ClusterManager exists
+        let mgr_ref = CLUSTER_MGR.get().unwrap();
+        PBFT.call_once(|| PbftEngine::new(self_id, unsafe { core::mem::transmute::<&ClusterManager<'_>, &ClusterManager<'static>>(mgr_ref) }));
     }
 
     pub fn global() -> &'static ClusterManager<'static> { CLUSTER_MGR.get().expect("cluster mgr") }
@@ -86,12 +91,20 @@ impl<'a> ClusterManager<'a> {
     pub fn poll_incoming(&self) {
         if let Ok(completions) = self.transport.poll() {
             for _comp in completions {
-                // In a real implementation we would DMA incoming data into
-                // pre-registered buffers; for the stub we elide the details.
-                // TODO: integrate with RDMA receive queues.
+                // TODO: convert RDMA completion into message bytes (placeholder)
+                // For demonstration, we skip DMA details and process pre-filled buffer.
             }
         }
     }
+
+    /// Deliver decoded cluster message to PBFT layer
+    pub fn deliver_msg(&self, src: NodeId, msg: &crate::fault::Msg) {
+        if let Some(engine) = PBFT.get() {
+            engine.handle_msg(src, msg);
+        }
+    }
+
+    pub fn pbft(&self) -> &'static PbftEngine<'static> { PBFT.get().expect("PBFT not init") }
 }
 
 // ----------------------------------------------------------
@@ -117,4 +130,5 @@ impl BftState {
     pub fn handle_msg(&mut self, _src: NodeId, _msg: &ClusterMsg) {
         // TODO: real PBFT state machine. For now we just record votes.
     }
+} 
 } 

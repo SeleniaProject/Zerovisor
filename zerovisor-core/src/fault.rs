@@ -22,4 +22,8 @@ pub enum Msg {
     Vote { term: u64, vote_granted: bool },
     AppendEntries { term: u64, leader_id: u32, prev_log_index: u64, prev_log_term: u64, entries: &'static [LogEntry], leader_commit: u64 },
     AppendResponse { term: u64, success: bool, match_index: u64 },
+    // PBFT consensus messages
+    PrePrepare { view: u64, seq: u64, digest: u64 },
+    Prepare { view: u64, seq: u64, digest: u64 },
+    Commit { view: u64, seq: u64, digest: u64 },
 } 
