@@ -47,9 +47,10 @@ impl EptHierarchy {
             #[repr(C, packed)]
             struct InveptDesc { eptp: u64, reserved: u64 }
             let desc = InveptDesc { eptp: self.phys_root(), reserved: 0 };
-            // 0 = Single-context invalidation, 1 = All-context invalidation (Intel SDM Vol. 3C §30.3.3)
-            const SINGLE_CONTEXT: u64 = 0;
-            const ALL_CONTEXT:    u64 = 1;
+            // Intel SDM Vol. 3C §30.3.3 – INVEPT type encoding
+            // 1 = Single-context invalidation, 2 = All-contexts invalidation
+            const SINGLE_CONTEXT: u64 = 1;
+            const ALL_CONTEXT:    u64 = 2;
             asm!("invept rax, rbx", in("rax") SINGLE_CONTEXT, in("rbx") &desc as *const _ as u64, options(nostack, preserves_flags));
         }
     }
