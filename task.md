@@ -4,7 +4,7 @@
 
 - [x] VmxManager: VMX 制御構造プール管理と VM 起動シーケンスの実装
 - [x] EptManager: EPT テーブル生成・更新・TLB 無効化の完全実装
-- [ ] IsolationEngine: ゲスト間メモリ・デバイス分離ポリシーの強制
+- [x] IsolationEngine: ゲスト間メモリ・デバイス分離ポリシーの強制
 - [x] ARM64 仮想化拡張 (EL2) サポート
 - [x] RISC-V Hypervisor Extension サポート
 - [ ] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG 対応)

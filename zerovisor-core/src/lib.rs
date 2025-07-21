@@ -41,6 +41,7 @@ pub mod formal_tests;
 #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
 pub mod formal;
 pub mod vmx_manager;
+pub mod isolation;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
@@ -67,6 +68,9 @@ pub fn init() -> Result<(), ZerovisorError> {
 
     accelerator_init()?;
 
+    // Initialize Isolation Engine
+    isolation::init();
+
     // Invoke formal verification checks when enabled.
     #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
     {
@@ -90,6 +94,9 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
     security_init().map_err(|_| ZerovisorError::SecurityInitializationFailed)?;
 
     accelerator_init()?;
+
+    // Initialize Isolation Engine
+    isolation::init();
 
     if let Some((dvfs, thermal)) = zerovisor_hal::power_interfaces() {
         energy::EnergyManager::init(dvfs, thermal);
