@@ -43,6 +43,11 @@ pub enum SecurityEvent {
         expected_hash: [u8; 32],
         actual_hash: [u8; 32],
     },
+    /// Guest DMA mapping for pass-through device (informational).
+    IoMapping {
+        guest_pa: u64,
+        size: usize,
+    },
     // Future event types will follow here.
 }
 

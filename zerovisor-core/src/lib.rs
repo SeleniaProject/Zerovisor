@@ -56,6 +56,8 @@ pub mod plugin_manager;
 pub mod feature_registry;
 pub mod info_flow;
 pub mod arch_state_translator;
+pub mod homomorphic_mem;
+pub mod storage_manager;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;

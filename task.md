@@ -14,10 +14,10 @@
 - [x] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
 - [x] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
 - [x] Information-flow Analysis: 機密性証明
-- [ ] Homomorphic Memory Encryption: FHE protected guest memory
+- [x] Homomorphic Memory Encryption: FHE protected guest memory
 
 ## デバイス仮想化
-- [ ] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
+- [x] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
 - [ ] SR-IOV NIC & Storage デバイスのパススルー
 - [ ] Accelerators: RISC-V Vector, AI Engine 対応
 

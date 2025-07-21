@@ -20,11 +20,13 @@ xts-mode = "0.5.1"
 once_cell = { version = "1.19", default-features = false, features = ["alloc"] }
 wasmi = { version = "0.29", default-features = false }
 postcard = { version = "1.0.2", default-features = false, features = ["alloc"] }
+tfhe = { version = "1.3", default-features = ["boolean", "integer"], optional = true }
 
 [features]
 default = []
 formal_verification = []
 coq_proofs = []
+homomorphic_encryption = ["tfhe"]
 
 [dev-dependencies]
 proptest = "1.4"
