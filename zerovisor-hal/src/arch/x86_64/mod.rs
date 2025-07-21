@@ -9,10 +9,12 @@ pub mod vmexit_fast;
 pub mod accelerator;
 pub mod nic;
 pub mod power;
+pub mod iommu;
 
 pub use cpu::X86Cpu;
 pub use gpu::SrIovGpuEngine;
 pub use vmx::cached_cpuid;
 pub use accelerator::X86AcceleratorManager;
 pub use nic::InfinibandNic;
-pub use power::{IntelPStateController, IntelThermalSensor}; 
+pub use power::{IntelPStateController, IntelThermalSensor};
+pub use iommu::VtdEngine; 

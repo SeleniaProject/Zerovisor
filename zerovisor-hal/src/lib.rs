@@ -19,6 +19,7 @@ pub mod power;
 pub mod accelerator;
 pub mod rdma_opt;
 pub mod rdma_vnet;
+pub mod iommu;
 
 // Re-export core traits
 pub use cpu::{Cpu, CpuFeatures, CpuState};
@@ -40,6 +41,9 @@ pub use arch::arm64::ArmCpu as ArchCpu;
 
 #[cfg(target_arch = "riscv64")]
 pub use arch::riscv64::RiscVCpu as ArchCpu;
+
+#[cfg(target_arch = "x86_64")]
+pub use arch::x86_64::iommu::VtdEngine as ArchIommu;
 
 /// Initialize the HAL for the current architecture
 pub fn init() -> Result<(), HalError> {
