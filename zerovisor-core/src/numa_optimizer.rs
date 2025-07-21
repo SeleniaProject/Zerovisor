@@ -13,6 +13,8 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use spin::Once;
 use core::cmp::min;
+use zerovisor_hal::timer::{Timer, TimerCallback};
+use core::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
 
 use zerovisor_hal::virtualization::{VmConfig, VmHandle};
 use crate::migration::{self, MigrationError};
@@ -207,6 +209,29 @@ impl NumaOptimizer {
 
 static OPTIMIZER: Once<NumaOptimizer> = Once::new();
 
-pub fn init() { OPTIMIZER.call_once(|| NumaOptimizer::new()); }
+pub fn init() { OPTIMIZER.call_once(|| {
+    let opt = NumaOptimizer::new();
+    let opt_ref: &'static NumaOptimizer = Box::leak(Box::new(opt));
+    start_rebalancer(opt_ref);
+    *OPTIMIZER.get_or_init(|| opt_ref);
+}); }
 
-pub fn optimizer() -> &'static NumaOptimizer { OPTIMIZER.get().expect("NUMA optimizer not initialized") } 
+pub fn optimizer() -> &'static NumaOptimizer { OPTIMIZER.get().expect("NUMA optimizer not initialized") }
+
+// ---------------- Background balancer thread ----------------
+
+static BALANCER_STARTED: AtomicBool = AtomicBool::new(false);
+
+fn start_rebalancer(optimizer: &'static NumaOptimizer) {
+    if BALANCER_STARTED.swap(true, AtomicOrdering::SeqCst) { return; }
+
+    // Register a periodic timer every 10 ms.
+    const INTERVAL_NS: u64 = 10_000_000;
+    fn callback(_: u64) {
+        // Safety: OPTIMIZER Once guarantees static lifetime.
+        if let Some(opt) = OPTIMIZER.get() {
+            opt.rebalance();
+        }
+    }
+    let _ = zerovisor_hal::timer::register_periodic(INTERVAL_NS, callback as TimerCallback);
+} 

@@ -6,7 +6,7 @@
 - [x] EptManager: ARM64 / RISC-V 対応と TLB 無効化最適化
 - [x] IOMMU / VT-d: フル統合とデバイスパススルー
 - [x] Live Migration: 差分コピー & 停止時間最小化
-- [ ] NUMAOptimizer: 動的最適化アルゴリズム完備
+- [x] NUMAOptimizer: 動的最適化アルゴリズム完備
 - [x] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
 - [ ] Cross-Architecture Live Migration: 異種 ISA (x86_64 / ARM64 / RISC-V) 間のライブマイグレーション
 
