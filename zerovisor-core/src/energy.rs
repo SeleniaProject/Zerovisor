@@ -77,6 +77,25 @@ impl<'a> EnergyManager<'a> {
         }
         Ok(())
     }
+
+    /// Switch to highest performance state available.
+    pub fn set_high_performance(&self) {
+        if let Some(pstate) = self.dvfs.available_pstates().last().copied() {
+            let _ = self.dvfs.set_pstate(0, pstate);
+        }
+    }
+
+    /// Periodic power/thermal management – call every second.
+    pub fn auto_manage(&self) {
+        if let Ok(temp) = self.monitor_temp() {
+            // Simple policy: if >85°C, go low-power; if <65°C and low carbon, boost.
+            if temp.celsius > 85 {
+                self.set_low_power();
+            } else if temp.celsius < 65 && self.carbon_intensity() < 300 {
+                self.set_high_performance();
+            }
+        }
+    }
 }
 
 pub fn global() -> &'static EnergyManager<'static> { ENERGY_MGR.get().expect("energy mgr") } 

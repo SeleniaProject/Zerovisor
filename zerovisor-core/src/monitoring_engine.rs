@@ -40,4 +40,9 @@ pub fn tick() {
     let _ = console::write_fmt(format_args!("zerovisor_running_vms {}\n", m.running_vms));
 
     let _ = console::write_str("# EOF\n");
+
+    // Invoke energy manager periodic maintenance
+    if let Some(engine) = core::panic::catch_unwind(|| crate::energy::global()).ok() {
+        engine.auto_manage();
+    }
 } 
