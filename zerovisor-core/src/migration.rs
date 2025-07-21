@@ -9,6 +9,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
 use spin::Mutex;
+use core::cmp::min;
 
 use crate::{cluster::{ClusterManager, NodeId}, monitor, ZerovisorError};
 use zerovisor_hal::virtualization::{VmHandle, VcpuHandle, VirtualizationEngine, VmStats};
@@ -59,7 +60,22 @@ impl<'a, E: VirtualizationEngine + Send + Sync> MigrationCtx<'a, E> {
         }
         Ok(())
     }
+
+    /// Stream snapshot via ClusterManager in fixed-size chunks.
+    pub fn stream_snapshot(&self, mgr: &ClusterManager, dest: NodeId) -> Result<(), ZerovisorError> {
+        let buf = &self.snapshot;
+        let mut offset = 0;
+        while offset < buf.len() {
+            let end = min(offset + CHUNK_SIZE, buf.len());
+            mgr.transport.send(dest, &buf[offset..end]).map_err(|_| ZerovisorError::InitializationFailed)?;
+            offset = end;
+        }
+        Ok(())
+    }
 }
+
+/// Maximum tolerated downtime (ns) for stop-and-copy phase.
+const MAX_DOWNTIME_NS: u64 = 10_000_000; // 10 ms
 
 /// Start live migration to `dest` node.
 pub fn migrate_vm<E: VirtualizationEngine + Send + Sync + 'static>(
@@ -80,15 +96,22 @@ pub fn migrate_vm<E: VirtualizationEngine + Send + Sync + 'static>(
     // Phase 3: stop-the-world copy – here we would pause the VM and copy the
     // last set of dirty pages; we skip memory transfer and only send CPU state.
 
-    let buf = &ctx.snapshot;
-    mgr.transport.send(dest, buf).map_err(|_| ZerovisorError::InitializationFailed)?;
+    // Phase 4: transmit snapshot
+    ctx.stream_snapshot(mgr, dest)?;
 
-    monitor::add_shared_pages( (buf.len() as u64 + 4095) / 4096 );
+    // Phase 5: send explicit DONE marker (zero-length packet)
+    mgr.transport.send(dest, &[]).map_err(|_| ZerovisorError::InitializationFailed)?;
+
+    monitor::add_shared_pages( (ctx.snapshot.len() as u64 + 4095) / 4096 );
 
     Ok(())
 }
 
-/// Handle received migration payload on destination node.
-pub fn receive_vm_payload(_buf: &[u8]) {
-    // TODO: reconstruct VM and VCPU state, allocate memory pages.
+/// Destination-side handler to reconstruct VM. Called when zero-length packet received.
+pub fn receive_vm_payload(buf: &[u8]) {
+    if buf.is_empty() {
+        // End-of-migration marker; actual reconstruction logic should have collected
+        // chunks in higher layer. Placeholder only.
+        crate::log!("Migration payload fully received – TODO: reconstruct VM state");
+    }
 } 
