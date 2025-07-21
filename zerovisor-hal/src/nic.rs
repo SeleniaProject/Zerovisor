@@ -14,6 +14,7 @@ pub enum NicError {
     QueueFull,
     Timeout,
     HardwareFault,
+    SerializeError,
 }
 
 /// RDMA work request kinds.

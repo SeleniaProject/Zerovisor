@@ -10,6 +10,8 @@ use core::time::Duration;
 use spin::{Mutex, Once};
 
 use zerovisor_hal::{HpcNic, RdmaOpKind, NicError, RdmaCompletion, NicAttr};
+use postcard::{to_slice, from_bytes};
+use crate::fault::Msg as ClusterMsg;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeId(pub u32);
@@ -35,6 +37,11 @@ impl<'a> ClusterTransport<'a> {
     }
 
     pub fn nic_attr(&self) -> NicAttr { self.nic.query_attr() }
+
+    pub fn send_msg(&self, node: NodeId, msg: &ClusterMsg, buf: &mut [u8]) -> Result<(), NicError> {
+        let used = to_slice(msg, buf).map_err(|_| NicError::SerializeError)?;
+        self.send(node, used)
+    }
 }
 
 /// Simple cluster manager maintaining membership and leader id.
@@ -62,4 +69,52 @@ impl<'a> ClusterManager<'a> {
 
     /// Current leader
     pub fn leader(&self) -> Option<NodeId> { *self.leader.lock() }
+
+    pub fn broadcast(&self, msg: &ClusterMsg) {
+        // Pre-allocated scratch buffer big enough for typical control messages
+        let mut buf = [0u8; 256];
+        for &node in self.members.lock().iter() {
+            // Skip self
+            if Some(node) == self.leader() {
+                continue;
+            }
+            let _ = self.transport.send_msg(node, msg, &mut buf);
+        }
+    }
+
+    /// Poll NIC completions and decode cluster messages (placeholder).
+    pub fn poll_incoming(&self) {
+        if let Ok(completions) = self.transport.poll() {
+            for _comp in completions {
+                // In a real implementation we would DMA incoming data into
+                // pre-registered buffers; for the stub we elide the details.
+                // TODO: integrate with RDMA receive queues.
+            }
+        }
+    }
+}
+
+// ----------------------------------------------------------
+// Byzantine Fault-Tolerant consensus placeholder (PBFT style)
+// ----------------------------------------------------------
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BftPhase { PrePrepare, Prepare, Commit }
+
+pub struct BftState {
+    pub view: u64,
+    pub sequence: u64,
+    pub phase: BftPhase,
+    // Map <node_id, prepared?>, simplified for demo
+    pub prepare_votes: BTreeMap<NodeId, bool>,
+    pub commit_votes: BTreeMap<NodeId, bool>,
+}
+
+impl BftState {
+    pub fn new(view: u64) -> Self {
+        Self { view, sequence: 0, phase: BftPhase::PrePrepare, prepare_votes: BTreeMap::new(), commit_votes: BTreeMap::new() }
+    }
+
+    pub fn handle_msg(&mut self, _src: NodeId, _msg: &ClusterMsg) {
+        // TODO: real PBFT state machine. For now we just record votes.
+    }
 } 

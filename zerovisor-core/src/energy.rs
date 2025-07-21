@@ -4,6 +4,7 @@
 
 use spin::Once;
 use zerovisor_hal::{DvfsController, ThermalSensor, PState, Temperature, PowerError};
+use core::time::Duration;
 
 pub struct EnergyManager<'a> {
     dvfs: &'a dyn DvfsController,
@@ -44,6 +45,37 @@ impl<'a> EnergyManager<'a> {
     /// Retrieve last reported carbon intensity.
     pub fn carbon_intensity(&self) -> u32 {
         self.carbon_intensity_g_per_kwh.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Estimate carbon emission (in grams CO2) for running a workload.
+    ///
+    /// `energy_joules` — total energy the workload is expected to consume.
+    pub fn estimate_carbon_emission(&self, energy_joules: u64) -> u64 {
+        // Convert J -> kWh (1 kWh = 3.6e6 J) and multiply by intensity.
+        let kwh_times_1000 = energy_joules * 1000 / 3_600_000; // milli-kWh to preserve precision
+        (kwh_times_1000 as u64 * self.carbon_intensity() as u64) / 1000
+    }
+
+    /// Decide whether the VM should be migrated to a greener node.
+    ///
+    /// Returns `true` if current intensity exceeds `threshold_g_per_kwh`.
+    pub fn should_migrate_for_carbon(&self, threshold_g_per_kwh: u32) -> bool {
+        self.carbon_intensity() > threshold_g_per_kwh
+    }
+
+    /// Block until temperature is below `max_temp` or timeout elapses.
+    pub fn wait_cooldown(&self, max_temp: Temperature, timeout: Duration) -> Result<(), PowerError> {
+        let start = crate::cycles::rdtsc();
+        while self.monitor_temp()? > max_temp {
+            // Simple busy-wait with micro-sleep (platform specific NOP).
+            #[allow(clippy::empty_loop)]
+            for _ in 0..10_000 { core::hint::spin_loop(); }
+            // Timeout safeguard (assumes 3 GHz -> convert cycles to ~secs).
+            if crate::cycles::rdtsc().wrapping_sub(start) > 3_000_000_000u64.saturating_mul(timeout.as_secs()) {
+                break;
+            }
+        }
+        Ok(())
     }
 }
 

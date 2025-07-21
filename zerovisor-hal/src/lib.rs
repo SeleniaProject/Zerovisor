@@ -17,6 +17,8 @@ pub mod gpu;
 pub mod nic;
 pub mod power;
 pub mod accelerator;
+pub mod rdma_opt;
+pub mod rdma_vnet;
 
 // Re-export core traits
 pub use cpu::{Cpu, CpuFeatures, CpuState};
