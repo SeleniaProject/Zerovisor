@@ -27,6 +27,7 @@ default = []
 formal_verification = []
 coq_proofs = []
 homomorphic_encryption = ["tfhe"]
+energy_management = []
 
 [dev-dependencies]
 proptest = "1.4"

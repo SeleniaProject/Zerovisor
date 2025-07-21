@@ -26,8 +26,8 @@
 - [x] BFT クラスタリング: Byzantine Fault Tolerance
 
 ## エネルギー & 環境
-- [ ] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
-- [ ] Thermal-aware Scheduler 統合
+- [x] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
+- [x] Thermal-aware Scheduler 統合
 
 ## クラウドネイティブ
 - [ ] Kubernetes CRI ランタイム統合

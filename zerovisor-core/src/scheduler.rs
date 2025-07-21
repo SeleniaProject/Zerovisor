@@ -138,6 +138,12 @@ impl QuantumScheduler {
         // デッドライン監視
         self.check_rt_deadlines();
 
+        // Call energy manager for thermal/power adjustments.
+        #[cfg(feature = "energy_management")]
+        if crate::energy::ENERGY_MGR.is_completed() {
+            crate::energy::global().auto_manage();
+        }
+
         // まずリアルタイムキュー。期限切れのものを優先。
         if let Some(rt_top) = self.real_time_queue.peek() {
             // 締切が過ぎていないかチェック (簡易実装)。

@@ -12,7 +12,7 @@ pub struct EnergyManager<'a> {
     carbon_intensity_g_per_kwh: core::sync::atomic::AtomicU32,
 }
 
-static ENERGY_MGR: Once<EnergyManager<'static>> = Once::new();
+pub static ENERGY_MGR: Once<EnergyManager<'static>> = Once::new();
 
 impl<'a> EnergyManager<'a> {
     pub fn init(dvfs: &'a dyn DvfsController, thermal: &'a dyn ThermalSensor) {
