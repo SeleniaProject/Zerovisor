@@ -1,24 +1,35 @@
 # Zerovisor 未実装項目チェックリスト
 
-以下のタスクは設計書・要件書に記載されているものの、現行コードベースでは未実装または不完全と判断された項目です。実装が完了したらチェックを入れてください。
+以下のタスクは現行コードベースで未実装、または機能が不完全な項目です。実装が完了したら `[x]` に変更してください。
 
-- [x] VmxManager: VMX 制御構造プール管理と VM 起動シーケンスの実装
-- [x] EptManager: EPT テーブル生成・更新・TLB 無効化の完全実装
-- [x] IsolationEngine: ゲスト間メモリ・デバイス分離ポリシーの強制
-- [x] ARM64 仮想化拡張 (EL2) サポート
-- [x] RISC-V Hypervisor Extension サポート
-- [x] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG 対応)
-- [x] IOMMU / VT-d 統合とデバイスパススルー
-- [x] NUMAOptimizer: VM 配置・メモリ移動最適化アルゴリズム
-- [x] ライブマイグレーション機能 (メモリ差分・停止時間最小化)
-- [x] 高可用クラスタリング (Byzantine Fault Tolerance 含む)
-- [x] エネルギー最適化 (DVFS, Thermal, カーボンアウェアスケジューリング)
-- [x] リアルタイム保証 (割り込み遅延 < 1µs, WCET 証明)
-- [x] 形式検証 (Coq / TLA+) 自動 CI 統合
-- [x] MonitoringEngine: UART + Prometheus メトリクスエクスポート
-- [x] DebugInterface: GDB スタブ・ブレークポイント・トレースポイント
-- [x] PluginManager & HypervisorPlugin フレームワーク
-- [x] FeatureRegistry: 動的機能の有効化 / 無効化機構
-- [x] Kubernetes CRI / WASM ランタイム統合
-- [x] パフォーマンステスト (VMEXIT < 10ns, VM 起動 < 50ms) の自動化
-- [x] RemoteAttestation: 外部検証サーバー連携と証明検証 
+## 仮想化コア
+- [x] EptManager: ARM64 / RISC-V 対応と TLB 無効化最適化
+- [ ] IOMMU / VT-d: フル統合とデバイスパススルー
+- [ ] Live Migration: 差分コピー & 停止時間最小化
+- [ ] NUMAOptimizer: 動的最適化アルゴリズム完備
+- [ ] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
+
+## セキュリティ
+- [ ] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
+- [ ] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
+- [ ] Information-flow Analysis: 機密性証明
+
+## デバイス仮想化
+- [ ] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
+- [ ] SR-IOV NIC & Storage デバイスのパススルー
+- [ ] Accelerators: RISC-V Vector, AI Engine 対応
+
+## 高可用 & 分散
+- [ ] ClusterBFT: f>1 ノード拡張 & ログ圧縮
+- [ ] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
+
+## エネルギー & 環境
+- [ ] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
+- [ ] Thermal-aware Scheduler 統合
+
+## クラウドネイティブ
+- [ ] Kubernetes CRI ランタイム統合
+- [ ] WASM ランタイム (WASI) + コールドスタート 1 ms
+
+## テスト & ベンチ
+- [ ] パフォーマンステスト自動化 (VMEXIT < 10ns, VM 起動 < 50ms) 

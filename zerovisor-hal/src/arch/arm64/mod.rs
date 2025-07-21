@@ -3,4 +3,8 @@
 
 pub mod cpu;
 
-pub use cpu::ArmCpu; 
+pub use cpu::ArmCpu;
+
+pub mod ept_manager;
+
+pub use ept_manager::EptHierarchy as Stage2Manager; 

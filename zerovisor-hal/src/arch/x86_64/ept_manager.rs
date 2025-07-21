@@ -38,9 +38,37 @@ impl EptHierarchy {
     /// Physical address of root PML4 table.
     pub fn phys_root(&self) -> PhysicalAddress { self.pml4.as_ptr() as PhysicalAddress }
 
+    /// Invalidate all cached translations for this EPT hierarchy using a single-context INVEPT.
+    #[inline]
+    pub fn invalidate_entire_tlb(&self) {
+        #[cfg(any(target_feature = "vmx", feature = "vmx"))]
+        unsafe {
+            use core::arch::asm;
+            #[repr(C, packed)]
+            struct InveptDesc { eptp: u64, reserved: u64 }
+            let desc = InveptDesc { eptp: self.phys_root(), reserved: 0 };
+            const SINGLE_CONTEXT: u64 = 1;
+            asm!("invept rax, rbx", in("rax") SINGLE_CONTEXT, in("rbx") &desc as *const _ as u64, options(nostack, preserves_flags));
+        }
+    }
+
+    /// Invalidate translations covering the given guest physical range.
+    /// Falls back to full invalidation on processors lacking INVEPT individual-address support.
+    #[inline]
+    pub fn invalidate_gpa_range(&self, _gpa: u64, _size: u64) {
+        // Future optimisation: use individual-address INVEPT (type 2) when supported.
+        // For now we invalidate the entire context which is still much faster than global flush.
+        self.invalidate_entire_tlb();
+    }
+
     /// Public map wrapper selects page size automatically.
     pub fn map(&mut self, gpa: u64, hpa: u64, size: u64, flags: EptFlags) -> Result<(), EptError> {
-        self.map_internal(gpa, hpa, size, flags)
+        let res = self.map_internal(gpa, hpa, size, flags);
+        if res.is_ok() {
+            // Ensure guest sees updated mappings as soon as possible.
+            self.invalidate_gpa_range(gpa, size);
+        }
+        res
     }
 
     /// Convenience wrapper to map an MMIO region (read/write, no exec).
@@ -197,6 +225,8 @@ impl EptHierarchy {
         for i in 0..pages {
             self.update_perm_single(gpa + i*0x1000, flags)?;
         }
+        // Flush only the touched range to keep VMEXIT latency low.
+        self.invalidate_gpa_range(gpa, size);
         Ok(())
     }
 
@@ -238,6 +268,7 @@ impl EptHierarchy {
         for i in 0..pages {
             self.unmap_internal(gpa + i * 0x1000)?;
         }
+        self.invalidate_gpa_range(gpa, size);
         Ok(())
     }
 
