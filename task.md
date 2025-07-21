@@ -18,7 +18,7 @@
 - [x] MonitoringEngine: UART + Prometheus メトリクスエクスポート
 - [x] DebugInterface: GDB スタブ・ブレークポイント・トレースポイント
 - [x] PluginManager & HypervisorPlugin フレームワーク
-- [ ] FeatureRegistry: 動的機能の有効化 / 無効化機構
+- [x] FeatureRegistry: 動的機能の有効化 / 無効化機構
 - [ ] Kubernetes CRI / WASM ランタイム統合
 - [ ] パフォーマンステスト (VMEXIT < 10ns, VM 起動 < 50ms) の自動化
 - [ ] RemoteAttestation: 外部検証サーバー連携と証明検証 
