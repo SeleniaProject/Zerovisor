@@ -149,3 +149,7 @@ impl QuantumCrypto {
     pub fn dilithium(&self) -> &DilithiumKeypair { &self.dilithium }
     pub fn sphincs(&self) -> &SphincsKeypair { &self.sphincs }
 } 
+
+pub mod crypto_mem;
+pub mod quantum_crypto;
+pub use quantum_crypto::*; 

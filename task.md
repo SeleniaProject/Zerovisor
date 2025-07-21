@@ -11,7 +11,7 @@
 - [x] Cross-Architecture Live Migration: 異種 ISA (x86_64 / ARM64 / RISC-V) 間のライブマイグレーション
 
 ## セキュリティ
-- [ ] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
+- [x] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
 - [ ] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
 - [ ] Information-flow Analysis: 機密性証明
 - [ ] Homomorphic Memory Encryption: FHE protected guest memory
