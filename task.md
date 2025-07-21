@@ -23,8 +23,8 @@
 - [x] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
 
 ## エネルギー & 環境
-- [ ] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
-- [ ] Thermal-aware Scheduler 統合
+- [x] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
+- [x] Thermal-aware Scheduler 統合
 
 ## クラウドネイティブ
 - [ ] Kubernetes CRI ランタイム統合
