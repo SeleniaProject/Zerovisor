@@ -17,4 +17,7 @@ pub use vmx::cached_cpuid;
 pub use accelerator::X86AcceleratorManager;
 pub use nic::InfinibandNic;
 pub use power::{IntelPStateController, IntelThermalSensor};
-pub use iommu::VtdEngine; 
+pub use iommu::VtdEngine;
+
+// Provide unified alias so higher-level code can use `Stage2Manager` across architectures.
+pub use ept_manager::EptHierarchy as Stage2Manager; 
