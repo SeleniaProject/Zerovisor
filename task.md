@@ -9,7 +9,7 @@
 - [x] RISC-V Hypervisor Extension サポート
 - [x] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG 対応)
 - [x] IOMMU / VT-d 統合とデバイスパススルー
-- [ ] NUMAOptimizer: VM 配置・メモリ移動最適化アルゴリズム
+- [x] NUMAOptimizer: VM 配置・メモリ移動最適化アルゴリズム
 - [ ] ライブマイグレーション機能 (メモリ差分・停止時間最小化)
 - [ ] 高可用クラスタリング (Byzantine Fault Tolerance 含む)
 - [ ] エネルギー最適化 (DVFS, Thermal, カーボンアウェアスケジューリング)

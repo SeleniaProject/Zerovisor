@@ -43,6 +43,7 @@ pub mod formal;
 pub mod vmx_manager;
 pub mod isolation;
 pub mod iommu;
+pub mod numa_optimizer;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
@@ -68,6 +69,9 @@ pub fn init() -> Result<(), ZerovisorError> {
     }
 
     accelerator_init()?;
+
+    // Initialize NUMA optimizer
+    numa_optimizer::init();
 
     // Initialize IOMMU engine for device passthrough
     iommu::init().map_err(|_| ZerovisorError::InitializationFailed)?;
@@ -98,6 +102,9 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
     security_init().map_err(|_| ZerovisorError::SecurityInitializationFailed)?;
 
     accelerator_init()?;
+
+    // Initialize NUMA optimizer
+    numa_optimizer::init();
 
     // Initialize IOMMU engine for device passthrough
     iommu::init().map_err(|_| ZerovisorError::InitializationFailed)?;

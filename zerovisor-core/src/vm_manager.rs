@@ -13,6 +13,7 @@ use crate::{log, monitor};
 use crate::console;
 use crate::security::{self, SecurityEvent};
 use crate::zero_copy::ZeroCopyBuffer;
+use crate::numa_optimizer;
 // logging macro is imported via crate root
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,8 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
         let handle = eng.create_vm(cfg)?;
         // Configure nested paging/EPT for the new VM
         eng.setup_nested_paging(handle)?;
+        let node = numa_optimizer::optimizer().optimize_vm_placement(cfg);
+        log!("VM {} placed on NUMA node {}", handle, node);
         self.states.lock().insert(handle, VmState::Created);
         Ok(handle)
     }
