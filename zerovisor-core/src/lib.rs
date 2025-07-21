@@ -48,6 +48,7 @@ pub mod cluster_bft;
 pub mod realtime;
 pub mod monitoring_engine;
 pub mod debug_interface;
+pub mod plugin_manager;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;

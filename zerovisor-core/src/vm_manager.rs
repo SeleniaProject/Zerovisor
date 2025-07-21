@@ -97,8 +97,12 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
                     Ok(reason) => {
                         crate::log!("VMEXIT reason {:?} on VCPU {}", reason, vcpu);
                         let action = {
-                            let mut eng = self.engine.lock();
-                            eng.handle_vm_exit(vcpu, reason)
+                            if let Some(a) = crate::plugin_manager::global().handle_vmexit(&reason) {
+                                Ok(a)
+                            } else {
+                                let mut eng = self.engine.lock();
+                                eng.handle_vm_exit(vcpu, reason)
+                            }
                         };
                         // record latency (placeholder 0 for now, need to compute)
                         monitor::record_vmexit(latency_ns);

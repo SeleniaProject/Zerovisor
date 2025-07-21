@@ -17,7 +17,7 @@
 - [x] 形式検証 (Coq / TLA+) 自動 CI 統合
 - [x] MonitoringEngine: UART + Prometheus メトリクスエクスポート
 - [x] DebugInterface: GDB スタブ・ブレークポイント・トレースポイント
-- [ ] PluginManager & HypervisorPlugin フレームワーク
+- [x] PluginManager & HypervisorPlugin フレームワーク
 - [ ] FeatureRegistry: 動的機能の有効化 / 無効化機構
 - [ ] Kubernetes CRI / WASM ランタイム統合
 - [ ] パフォーマンステスト (VMEXIT < 10ns, VM 起動 < 50ms) の自動化
