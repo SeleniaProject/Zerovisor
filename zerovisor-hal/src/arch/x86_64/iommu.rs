@@ -4,16 +4,19 @@
 
 extern crate alloc;
 use alloc::collections::BTreeMap;
+use alloc::boxed::Box;
 use spin::Mutex;
 
 use core::sync::atomic::{AtomicU16, Ordering};
 
 /// Intel VT-d Root-Entry definition (64-bit) – only low 64 bits used in 48-bit address mode.
 #[repr(C, align(4096))]
+#[derive(Copy, Clone)]
 struct RootEntry(u64);
 
 /// VT-d Context-Entry (128-bit)
 #[repr(C, align(4096))]
+#[derive(Copy, Clone)]
 struct ContextEntry {
     low: u64,
     high: u64,
@@ -59,7 +62,8 @@ static NEXT_DOMAIN_ID: AtomicU16 = AtomicU16::new(1);
 
 use crate::iommu::{IommuEngine, IommuError, DmaHandle};
 use crate::memory::PhysicalAddress;
-use crate::arch::x86_64::ept_manager::{EptHierarchy, EptFlags};
+use crate::arch::x86_64::ept_manager::EptHierarchy;
+use crate::arch::x86_64::ept::EptFlags;
 use crate::arch::x86_64::ept_manager::EptError;
 
 /// Simple VT-d remapping structure per device (domain==device model)
@@ -131,35 +135,36 @@ impl IommuEngine for VtdEngine {
 
         // Lazily allocate context table for the bus if not existing.
         unsafe {
-            let root = ROOT_TABLE.ok_or(IommuError::InitFailed)?;
-            let root_entry = &mut root.0[bus];
-            let ctx_table: &mut ContextTable = if root_entry.0 & 1 == 0 {
-                // allocate
-                let boxed: Box<ContextTable> = Box::new(ContextTable::new_empty());
-                let phys = boxed.as_ref() as *const _ as u64;
-                root_entry.0 = phys | 1; // present bit
-                Box::leak(boxed)
-            } else {
-                &mut *((root_entry.0 & !0xFFF) as *mut ContextTable)
-            };
+            if let Some(root) = ROOT_TABLE.as_mut() {
+                let root_entry = &mut root.0[bus];
+                let ctx_table: &mut ContextTable = if root_entry.0 & 1 == 0 {
+                    // allocate
+                    let boxed: Box<ContextTable> = Box::new(ContextTable::new_empty());
+                    let phys = boxed.as_ref() as *const _ as u64;
+                    root_entry.0 = phys | 1; // present bit
+                    Box::leak(boxed)
+                } else {
+                    &mut *((root_entry.0 & !0xFFF) as *mut ContextTable)
+                };
 
-            // Program context entry for device/function.
-            let entry = ContextEntry::new(ept.phys_root(), domain_id, 3); // 48-bit addr width
-            ctx_table.0[devfn] = entry;
+                // Program context entry for device/function.
+                let entry = ContextEntry::new(ept.phys_root(), domain_id, 3); // 48-bit addr width
+                ctx_table.0[devfn] = entry;
 
-            // Flush context cache for this device – write in CCMD register.
-            const DMAR_BASE: u64 = 0xFED9_0000;
-            const CCMD_OFFSET: u64 = 0x28;
-            let ccmd = (DMAR_BASE + CCMD_OFFSET) as *mut u64;
-            // Set Device-invalidate (bit 0) and specify device function (bus/dev/fn) and domain
-            let ccmd_val = (1u64) /* ICC */
-                            | ((bus as u64) << 16)
-                            | ((devfn as u64) << 8)
-                            | ((domain_id as u64) << 32);
-            unsafe {
-                ccmd.write_volatile(ccmd_val);
-                // Wait for completion bit (bit 0 cleared by HW)
-                while ccmd.read_volatile() & 1 != 0 {}
+                // Flush context cache for this device – write in CCMD register.
+                const DMAR_BASE: u64 = 0xFED9_0000;
+                const CCMD_OFFSET: u64 = 0x28;
+                let ccmd = (DMAR_BASE + CCMD_OFFSET) as *mut u64;
+                // Set Device-invalidate (bit 0) and specify device function (bus/dev/fn) and domain
+                let ccmd_val = (1u64) /* ICC */
+                                | ((bus as u64) << 16)
+                                | ((devfn as u64) << 8)
+                                | ((domain_id as u64) << 32);
+                unsafe {
+                    ccmd.write_volatile(ccmd_val);
+                    // Wait for completion bit (bit 0 cleared by HW)
+                    while ccmd.read_volatile() & 1 != 0 {}
+                }
             }
         }
 
@@ -178,7 +183,7 @@ impl IommuEngine for VtdEngine {
 
         // Remove context entry from hardware table.
         unsafe {
-            if let Some(root) = ROOT_TABLE {
+            if let Some(root) = ROOT_TABLE.as_mut() {
                 let root_entry = &mut root.0[bus];
                 if root_entry.0 & 1 != 0 {
                     let ctx_table = &mut *((root_entry.0 & !0xFFF) as *mut ContextTable);

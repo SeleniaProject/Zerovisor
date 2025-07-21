@@ -14,7 +14,6 @@ use crate::memory::{PhysicalAddress, VirtualAddress};
 /// The implementation is *transport agnostic* and relies solely on the `HpcNic`
 /// trait; architecture-specific back-ends can decide how to map these calls
 /// onto queue-pairs and doorbell records.
-#[derive(Debug)]
 pub struct RdmaBatcher<'a, const N: usize> {
     nic: &'a dyn HpcNic,
     pending: usize,

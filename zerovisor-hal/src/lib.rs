@@ -46,6 +46,12 @@ pub use arch::riscv64::RiscVCpu as ArchCpu;
 #[cfg(target_arch = "x86_64")]
 pub use arch::x86_64::iommu::VtdEngine as ArchIommu;
 
+#[cfg(target_arch = "aarch64")]
+pub use arch::arm64::iommu::SmmuEngine as ArchIommu;
+
+#[cfg(target_arch = "riscv64")]
+pub use arch::riscv64::iommu::RiscvIommuEngine as ArchIommu;
+
 /// Initialize the HAL for the current architecture
 pub fn init() -> Result<(), HalError> {
     #[cfg(target_arch = "x86_64")]

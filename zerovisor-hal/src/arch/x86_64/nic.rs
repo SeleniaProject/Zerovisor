@@ -30,9 +30,10 @@ impl HpcNic for InfinibandNic {
     }
 
     fn poll_completions(&self, _max: usize, _timeout: Option<Duration>) -> Result<&[RdmaCompletion], NicError> {
-        let guard = self.completions.lock();
-        let slice: &[RdmaCompletion] = &guard;
-        Ok(slice)
+        // This stub backend does not yet support safe borrowing of the completion queue
+        // with a lifetime that outlives the mutex guard. Until the full polling logic is
+        // implemented we simply indicate that the operation is not supported.
+        Err(NicError::NotSupported)
     }
 
     fn query_attr(&self) -> NicAttr {
