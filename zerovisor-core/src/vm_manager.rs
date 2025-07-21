@@ -80,6 +80,7 @@ impl<E: VirtualizationEngine<Error = HalError> + Send + Sync + 'static> VmManage
             if let Some(entity) = pick_next() {
                 // handle management console input
                 console::poll();
+                crate::debug_interface::poll();
                 crate::monitoring_engine::tick();
                 let _vm = entity.vm;
                 let vcpu = entity.vcpu;

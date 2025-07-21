@@ -47,6 +47,7 @@ pub mod numa_optimizer;
 pub mod cluster_bft;
 pub mod realtime;
 pub mod monitoring_engine;
+pub mod debug_interface;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
@@ -82,6 +83,9 @@ pub fn init() -> Result<(), ZerovisorError> {
     // Initialize Isolation Engine
     isolation::init();
 
+    // Initialize debug interface (GDB stub)
+    debug_interface::init();
+
     // Invoke formal verification checks when enabled.
     #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
     {
@@ -114,6 +118,9 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
 
     // Initialize Isolation Engine
     isolation::init();
+
+    // Initialize debug interface (GDB stub)
+    debug_interface::init();
 
     if let Some((dvfs, thermal)) = zerovisor_hal::power_interfaces() {
         energy::EnergyManager::init(dvfs, thermal);

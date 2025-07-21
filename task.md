@@ -16,7 +16,7 @@
 - [x] リアルタイム保証 (割り込み遅延 < 1µs, WCET 証明)
 - [x] 形式検証 (Coq / TLA+) 自動 CI 統合
 - [x] MonitoringEngine: UART + Prometheus メトリクスエクスポート
-- [ ] DebugInterface: GDB スタブ・ブレークポイント・トレースポイント
+- [x] DebugInterface: GDB スタブ・ブレークポイント・トレースポイント
 - [ ] PluginManager & HypervisorPlugin フレームワーク
 - [ ] FeatureRegistry: 動的機能の有効化 / 無効化機構
 - [ ] Kubernetes CRI / WASM ランタイム統合
