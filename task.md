@@ -30,7 +30,7 @@
 - [x] Thermal-aware Scheduler 統合
 
 ## クラウドネイティブ
-- [ ] Kubernetes CRI ランタイム統合
+- [x] Kubernetes CRI ランタイム統合
 - [ ] WASM ランタイム (WASI) + コールドスタート 1 ms
 
 ## テスト & ベンチ

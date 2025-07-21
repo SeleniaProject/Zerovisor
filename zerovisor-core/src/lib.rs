@@ -60,6 +60,7 @@ pub mod homomorphic_mem;
 pub mod storage_manager;
 pub mod nic_manager;
 pub mod cluster_runtime;
+pub mod kube_cri;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
