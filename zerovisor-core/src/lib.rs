@@ -50,6 +50,7 @@ pub mod monitoring_engine;
 pub mod debug_interface;
 pub mod plugin_manager;
 pub mod feature_registry;
+pub mod info_flow;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
