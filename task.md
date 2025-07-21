@@ -23,7 +23,7 @@
 
 ## 高可用 & 分散
 - [x] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
-- [ ] BFT クラスタリング: Byzantine Fault Tolerance
+- [x] BFT クラスタリング: Byzantine Fault Tolerance
 
 ## エネルギー & 環境
 - [ ] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング
