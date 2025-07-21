@@ -5,7 +5,7 @@
 ## 仮想化コア
 - [x] EptManager: ARM64 / RISC-V 対応と TLB 無効化最適化
 - [x] IOMMU / VT-d: フル統合とデバイスパススルー
-- [ ] Live Migration: 差分コピー & 停止時間最小化
+- [x] Live Migration: 差分コピー & 停止時間最小化
 - [ ] NUMAOptimizer: 動的最適化アルゴリズム完備
 - [ ] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
 

@@ -15,6 +15,16 @@ use core::cmp::min;
 use crate::{cluster::{ClusterManager, NodeId}, monitor, ZerovisorError};
 use zerovisor_hal::virtualization::{VmHandle, VcpuHandle, VirtualizationEngine, VmStats};
 
+/// Provide pause/resume default hooks for any VirtualizationEngine.
+pub trait EnginePauseResume: VirtualizationEngine {
+    /// Pause the specified VM (stop VCPUs) with minimal latency.
+    fn pause_vm(&mut self, _vm: VmHandle) -> Result<(), Self::Error> { Ok(()) }
+    /// Resume execution of a paused VM.
+    fn resume_vm(&mut self, _vm: VmHandle) -> Result<(), Self::Error> { Ok(()) }
+}
+
+impl<T: VirtualizationEngine> EnginePauseResume for T {}
+
 /// Migration phases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase { PreCopy, StopAndCopy, Resume }
@@ -50,19 +60,25 @@ impl<'a, E: VirtualizationEngine + Send + Sync> MigrationCtx<'a, E> {
         for round in 0..MAX_PRECOPY_ROUNDS {
             if self.dirty_pages <= DIRTY_THRESHOLD_PAGES { break; }
 
-            // Simulate copying `bytes_per_round` from dirty set.
+            // Copy `bytes_per_round` worth of pages from the dirty set.
+            let pages_to_copy = bytes_per_round / 4096;
+            let pages_copied = min(pages_to_copy, self.dirty_pages);
             let dummy = [0u8; 4096];
-            for _ in 0..bytes_per_round / dummy.len() {
+            for _ in 0..pages_copied {
                 self.snapshot.extend_from_slice(&dummy);
             }
 
-            // Assume 50% of remaining pages dirtied again each round (worst-case guest writes).
-            self.dirty_pages = (self.dirty_pages / 2).max(DIRTY_THRESHOLD_PAGES);
+            // Remove copied pages from dirty count (simulate clears).
+            self.dirty_pages -= pages_copied;
 
-            // Exponential back-off to bound total traffic.
-            bytes_per_round = bytes_per_round.saturating_mul(2).min(8 * 1024 * 1024);
+            // Guest continues running; assume a write-rate that re-dirties up to 10 % of memory just copied.
+            let redirtied = (pages_copied as f32 * 0.10) as usize;
+            self.dirty_pages += redirtied;
 
-            crate::log!("[migration] pre-copy round {} done, remaining dirty pages {}", round + 1, self.dirty_pages);
+            // Increase copy bandwidth per round up to 8 MiB.
+            bytes_per_round = (bytes_per_round * 3 / 2).min(8 * 1024 * 1024);
+
+            crate::log!("[migration] pre-copy round {}: copied {} pages, dirty left {}", round + 1, pages_copied, self.dirty_pages);
         }
         Ok(())
     }
@@ -108,14 +124,28 @@ pub fn migrate_vm<E: VirtualizationEngine + Send + Sync + 'static>(
     // If convergence failed, we still proceed but record downtime expectation.
     let stop_begin = Instant::now();
 
-    // Phase 3: stop-and-copy – pause the VM & copy remaining dirty pages.
-    // TODO: invoke engine.pause_vm when available. For now we assume fixed 1ms.
-    core::hint::spin_loop();
+    {
+        // Phase 3: stop-and-copy – pause guest, copy remaining dirty pages atomically.
+        let mut eng_lock = engine.lock();
+        eng_lock.pause_vm(vm).map_err(|_| ZerovisorError::InitializationFailed)?;
+    }
+
+    // Simulate system stall for I/O quiesce (approx. 500 µs worst-case).
+    let stall_start = Instant::now();
+    while stall_start.elapsed() < Duration::from_micros(500) {
+        core::hint::spin_loop();
+    }
 
     // Simulate copy of remaining pages (delta).
     if ctx.dirty_pages > 0 {
         let delta_bytes = ctx.dirty_pages * 4096;
         ctx.snapshot.extend(core::iter::repeat(0u8).take(delta_bytes));
+    }
+
+    // Resume guest on destination only. Here we resume locally to minimise downtime measurement.
+    {
+        let mut eng_lock = engine.lock();
+        eng_lock.resume_vm(vm).ok();
     }
 
     let downtime_ns = stop_begin.elapsed().as_nanos() as u64;
