@@ -13,7 +13,7 @@
 ## セキュリティ
 - [x] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
 - [x] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
-- [ ] Information-flow Analysis: 機密性証明
+- [x] Information-flow Analysis: 機密性証明
 - [ ] Homomorphic Memory Encryption: FHE protected guest memory
 
 ## デバイス仮想化
