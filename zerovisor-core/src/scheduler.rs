@@ -286,7 +286,11 @@ pub fn get_cycle_counter() -> u64 {
     { 0 }
 }
 
-const MAX_INTERRUPT_LATENCY_NS: u64 = 1_000; // 1 µs
+/// Upper bound for measured interrupt latency in nanoseconds (1 µs).
+pub const MAX_INTERRUPT_LATENCY_NS: u64 = 1_000;
+
+/// For WCET 証明 we use the same target for now.
+pub const MAX_SCHED_LATENCY_NS: u64 = MAX_INTERRUPT_LATENCY_NS;
 
 // Public API wrappers ----------------------------------------------------
 
@@ -294,5 +298,3 @@ const MAX_INTERRUPT_LATENCY_NS: u64 = 1_000; // 1 µs
 pub fn wcet_violations(threshold_ns: u64) -> Vec<(VmHandle, VcpuHandle, u64)> {
     SCHEDULER.lock().wcet_violations(threshold_ns)
 }
-/// Maximum scheduler/interrupt latency target (ns)
-pub const MAX_SCHED_LATENCY_NS: u64 = MAX_INTERRUPT_LATENCY_NS;
