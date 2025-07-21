@@ -8,6 +8,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 use core::time::Duration;
+use core::time::Instant;
 use spin::Mutex;
 use core::cmp::min;
 
@@ -44,19 +45,24 @@ impl<'a, E: VirtualizationEngine + Send + Sync> MigrationCtx<'a, E> {
         Ok(())
     }
 
-    /// Perform iterative pre-copy of guest memory.  Because the HAL paging
-    /// iterator is not yet available, we approximate by transferring a fixed
-    /// chunk count and assume dirties converge.
-    pub fn pre_copy_memory(&mut self, rounds: usize, bytes_per_round: usize) -> Result<(), E::Error> {
-        for _ in 0..rounds {
-            // Allocate a dummy buffer to simulate dirty pages.
+    /// Iterate pre-copy until dirty pages converge below threshold or round limit.
+    pub fn pre_copy_memory(&mut self, mut bytes_per_round: usize) -> Result<(), E::Error> {
+        for round in 0..MAX_PRECOPY_ROUNDS {
+            if self.dirty_pages <= DIRTY_THRESHOLD_PAGES { break; }
+
+            // Simulate copying `bytes_per_round` from dirty set.
             let dummy = [0u8; 4096];
             for _ in 0..bytes_per_round / dummy.len() {
                 self.snapshot.extend_from_slice(&dummy);
             }
-            // Fake convergence criteria.
-            self.dirty_pages = self.dirty_pages.saturating_sub(bytes_per_round / 4096);
-            if self.dirty_pages <= 16 { break; }
+
+            // Assume 50% of remaining pages dirtied again each round (worst-case guest writes).
+            self.dirty_pages = (self.dirty_pages / 2).max(DIRTY_THRESHOLD_PAGES);
+
+            // Exponential back-off to bound total traffic.
+            bytes_per_round = bytes_per_round.saturating_mul(2).min(8 * 1024 * 1024);
+
+            crate::log!("[migration] pre-copy round {} done, remaining dirty pages {}", round + 1, self.dirty_pages);
         }
         Ok(())
     }
@@ -76,6 +82,12 @@ impl<'a, E: VirtualizationEngine + Send + Sync> MigrationCtx<'a, E> {
 
 /// Maximum tolerated downtime (ns) for stop-and-copy phase.
 const MAX_DOWNTIME_NS: u64 = 10_000_000; // 10 ms
+/// Page convergence threshold – stop precopy when remaining dirty pages below this number.
+const DIRTY_THRESHOLD_PAGES: usize = 16;
+/// Maximum number of pre-copy rounds to avoid livelock.
+const MAX_PRECOPY_ROUNDS: usize = 10;
+/// Chunk size (bytes) streamed over RDMA transport per send.
+const CHUNK_SIZE: usize = 128 * 1024; // 128 KiB
 
 /// Start live migration to `dest` node.
 pub fn migrate_vm<E: VirtualizationEngine + Send + Sync + 'static>(
@@ -91,10 +103,25 @@ pub fn migrate_vm<E: VirtualizationEngine + Send + Sync + 'static>(
 
     // Phase 2: iterative pre-copy of memory (simplified)
     ctx.dirty_pages = 512; // assume 512 pages dirty initially (demo)
-    ctx.pre_copy_memory(4, 64 * 1024).map_err(|_| ZerovisorError::ResourceExhausted)?;
+    ctx.pre_copy_memory(64 * 1024).map_err(|_| ZerovisorError::ResourceExhausted)?;
 
-    // Phase 3: stop-the-world copy – here we would pause the VM and copy the
-    // last set of dirty pages; we skip memory transfer and only send CPU state.
+    // If convergence failed, we still proceed but record downtime expectation.
+    let stop_begin = Instant::now();
+
+    // Phase 3: stop-and-copy – pause the VM & copy remaining dirty pages.
+    // TODO: invoke engine.pause_vm when available. For now we assume fixed 1ms.
+    core::hint::spin_loop();
+
+    // Simulate copy of remaining pages (delta).
+    if ctx.dirty_pages > 0 {
+        let delta_bytes = ctx.dirty_pages * 4096;
+        ctx.snapshot.extend(core::iter::repeat(0u8).take(delta_bytes));
+    }
+
+    let downtime_ns = stop_begin.elapsed().as_nanos() as u64;
+    if downtime_ns > MAX_DOWNTIME_NS {
+        crate::log!("[migration] warning: downtime {} ns exceeds target", downtime_ns);
+    }
 
     // Phase 4: transmit snapshot
     ctx.stream_snapshot(mgr, dest)?;

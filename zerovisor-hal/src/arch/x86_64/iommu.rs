@@ -8,11 +8,14 @@ use spin::Mutex;
 
 use crate::iommu::{IommuEngine, IommuError, DmaHandle};
 use crate::memory::PhysicalAddress;
+use crate::arch::x86_64::ept_manager::{EptHierarchy, EptFlags};
+use crate::arch::x86_64::ept_manager::EptError;
 
 /// Simple VT-d remapping structure per device (domain==device model)
 struct DeviceMapping {
     next_handle: DmaHandle,
     entries: BTreeMap<DmaHandle, (u64, u64, usize)>, // handle→(gpa,hpa,size)
+    ept: EptHierarchy,
 }
 
 pub struct VtdEngine {
@@ -33,7 +36,8 @@ impl IommuEngine for VtdEngine {
     fn attach_device(&self, bdf: u32) -> Result<(), IommuError> {
         let mut map = self.devices.lock();
         if map.contains_key(&bdf) { return Err(IommuError::AlreadyAttached); }
-        map.insert(bdf, DeviceMapping { next_handle: 1, entries: BTreeMap::new() });
+        let ept = EptHierarchy::new().map_err(|_| IommuError::InitFailed)?;
+        map.insert(bdf, DeviceMapping { next_handle: 1, entries: BTreeMap::new(), ept });
         // TODO: program VT-d context entry for device to point to per-device page table
         Ok(())
     }
@@ -50,18 +54,41 @@ impl IommuEngine for VtdEngine {
         let dev = map.get_mut(&bdf).ok_or(IommuError::NotAttached)?;
         let handle = dev.next_handle;
         dev.next_handle += 1;
+        // Map into per-device DMA page tables.
+        let flags = if writable { EptFlags::READ | EptFlags::WRITE } else { EptFlags::READ };
+        dev.ept
+            .map(gpa as u64, hpa as u64, size as u64, flags)
+            .map_err(|e| match e {
+                EptError::InvalidAlignment => IommuError::MapFailed,
+                EptError::OutOfMemory => IommuError::MapFailed,
+                EptError::AlreadyMapped => IommuError::MapFailed,
+                EptError::NotMapped => IommuError::MapFailed,
+            })?;
+
+        dev.ept.invalidate_gpa_range(gpa as u64, size as u64);
+
         dev.entries.insert(handle, (gpa as u64, hpa as u64, size));
-        // TODO: populate VT-d page tables & invalidate IOTLB
         Ok(handle)
     }
 
     fn unmap(&self, bdf: u32, handle: DmaHandle) -> Result<(), IommuError> {
         let mut map = self.devices.lock();
         let dev = map.get_mut(&bdf).ok_or(IommuError::NotAttached)?;
-        dev.entries.remove(&handle).ok_or(IommuError::UnmapFailed)?;
-        // TODO: update page tables and invalidate IOTLB
-        Ok(())
+        if let Some((gpa, _hpa, size)) = dev.entries.remove(&handle) {
+            dev.ept
+                .unmap(gpa, size as u64)
+                .map_err(|_| IommuError::UnmapFailed)?;
+            dev.ept.invalidate_gpa_range(gpa, size as u64);
+            Ok(())
+        } else {
+            Err(IommuError::UnmapFailed)
+        }
     }
 
-    fn flush_tlb(&self, _bdf: u32) -> Result<(), IommuError> { Ok(()) }
+    fn flush_tlb(&self, bdf: u32) -> Result<(), IommuError> {
+        let map = self.devices.lock();
+        let dev = map.get(&bdf).ok_or(IommuError::NotAttached)?;
+        dev.ept.invalidate_entire_tlb();
+        Ok(())
+    }
 } 
