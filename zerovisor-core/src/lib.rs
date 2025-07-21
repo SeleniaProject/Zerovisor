@@ -40,6 +40,7 @@ pub mod proofs_stub;
 pub mod formal_tests;
 #[cfg(any(feature = "formal_verification", feature = "coq_proofs"))]
 pub mod formal;
+pub mod vmx_manager;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
