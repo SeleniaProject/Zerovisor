@@ -20,7 +20,7 @@
 - [x] Accelerators: RISC-V Vector, AI Engine 対応
 
 ## 高可用 & 分散
-- [ ] ClusterBFT: f>1 ノード拡張 & ログ圧縮
+- [x] ClusterBFT: f>1 ノード拡張 & ログ圧縮
 - [ ] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
 
 ## エネルギー & 環境
