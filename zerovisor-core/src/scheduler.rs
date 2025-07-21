@@ -132,8 +132,12 @@ impl QuantumScheduler {
 
     /// 次に実行すべきエンティティを決定。
     pub fn schedule_next(&mut self) -> Option<SchedEntity> {
+        // Measure scheduler latency for WCET analysis
+        let start_cycles = get_cycle_counter();
+
         // デッドライン監視
         self.check_rt_deadlines();
+
         // まずリアルタイムキュー。期限切れのものを優先。
         if let Some(rt_top) = self.real_time_queue.peek() {
             // 締切が過ぎていないかチェック (簡易実装)。
@@ -145,7 +149,15 @@ impl QuantumScheduler {
         }
 
         // 通常キュー。
-        self.ready_queue.pop()
+        let ent = self.ready_queue.pop();
+
+        // Latency measurement
+        let latency_ns = cycles_to_nanoseconds(get_cycle_counter() - start_cycles);
+        if latency_ns > MAX_INTERRUPT_LATENCY_NS {
+            DEADLINE_MISSES.fetch_add(1, AtomicOrdering::Relaxed);
+        }
+
+        ent
     }
 
     /// 量子が満了した際の処理。
@@ -265,3 +277,14 @@ pub fn get_cycle_counter() -> u64 {
     #[cfg(not(target_arch = "x86_64"))]
     { 0 }
 }
+
+const MAX_INTERRUPT_LATENCY_NS: u64 = 1_000; // 1 µs
+
+// Public API wrappers ----------------------------------------------------
+
+/// Return WCET violations aggregated so far.
+pub fn wcet_violations(threshold_ns: u64) -> Vec<(VmHandle, VcpuHandle, u64)> {
+    SCHEDULER.lock().wcet_violations(threshold_ns)
+}
+/// Maximum scheduler/interrupt latency target (ns)
+pub const MAX_SCHED_LATENCY_NS: u64 = MAX_INTERRUPT_LATENCY_NS;
