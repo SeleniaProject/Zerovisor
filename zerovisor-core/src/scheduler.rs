@@ -153,6 +153,7 @@ impl QuantumScheduler {
 
         // Latency measurement
         let latency_ns = cycles_to_nanoseconds(get_cycle_counter() - start_cycles);
+        LAST_SCHED_LATENCY_NS.store(latency_ns, AtomicOrdering::Relaxed);
         if latency_ns > MAX_INTERRUPT_LATENCY_NS {
             DEADLINE_MISSES.fetch_add(1, AtomicOrdering::Relaxed);
         }
@@ -198,6 +199,7 @@ impl QuantumScheduler {
 
 static SCHEDULER: Mutex<QuantumScheduler> = Mutex::new(QuantumScheduler::new());
 static DEADLINE_MISSES: AtomicU64 = AtomicU64::new(0);
+static LAST_SCHED_LATENCY_NS: AtomicU64 = AtomicU64::new(0);
 
 /// サブシステム初期化 (Task 5.1)。
 pub fn init() -> Result<(), ZerovisorError> {
@@ -224,6 +226,12 @@ pub fn record_exec_time(entity: SchedEntity, exec_ns: u64) {
 
 /// リアルタイムデッドラインミス総数を取得。
 pub fn deadline_miss_count() -> u64 { DEADLINE_MISSES.load(AtomicOrdering::Relaxed) }
+
+/// Get last measured scheduler decision latency in nanoseconds.
+pub fn last_schedule_latency_ns() -> u64 { LAST_SCHED_LATENCY_NS.load(AtomicOrdering::Relaxed) }
+
+/// Return true if recorded WCET for all VCPUs is within `threshold_ns`.
+pub fn wcet_proved(threshold_ns: u64) -> bool { wcet_violations(threshold_ns).is_empty() }
 
 /// 優先度継承 (priority inheritance)。待機 VCPU の priority を一時的に引き上げる。
 pub fn inherit_priority(vm: VmHandle, vcpu: VcpuHandle, new_priority: u8) {

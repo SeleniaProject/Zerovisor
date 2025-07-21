@@ -13,6 +13,16 @@ use spin::Mutex;
 use core::cmp::min;
 
 use crate::{cluster::{ClusterManager, NodeId}, monitor, ZerovisorError};
+
+/// Errors that can occur during intra-host memory migration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrationError {
+    PauseFailed,
+    ResumeFailed,
+    MapFailed,
+    TransferFailed,
+}
+
 use zerovisor_hal::virtualization::{VmHandle, VcpuHandle, VirtualizationEngine, VmStats};
 
 /// Provide pause/resume default hooks for any VirtualizationEngine.

@@ -20,7 +20,10 @@ fn wcet_within_limit() {
         }
     }
 
-    // Check there are no WCET violations at 1µs threshold
-    let violations = scheduler::wcet_violations(1_000);
-    assert!(violations.is_empty(), "unexpected WCET violations: {:?}", violations);
+    // Check interrupt scheduling latency under 1µs
+    let latency = scheduler::last_schedule_latency_ns();
+    assert!(latency <= 1_000, "scheduler latency {} ns exceeds 1µs", latency);
+
+    // Check WCET proof helper
+    assert!(scheduler::wcet_proved(1_000), "WCET proof failed");
 } 
