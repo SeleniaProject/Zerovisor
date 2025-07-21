@@ -8,7 +8,7 @@
 - [x] Live Migration: 差分コピー & 停止時間最小化
 - [x] NUMAOptimizer: 動的最適化アルゴリズム完備
 - [x] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
-- [ ] Cross-Architecture Live Migration: 異種 ISA (x86_64 / ARM64 / RISC-V) 間のライブマイグレーション
+- [x] Cross-Architecture Live Migration: 異種 ISA (x86_64 / ARM64 / RISC-V) 間のライブマイグレーション
 
 ## セキュリティ
 - [ ] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API

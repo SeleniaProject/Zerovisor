@@ -51,6 +51,7 @@ pub mod debug_interface;
 pub mod plugin_manager;
 pub mod feature_registry;
 pub mod info_flow;
+pub mod arch_state_translator;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;

@@ -13,6 +13,7 @@ use spin::Mutex;
 use core::cmp::min;
 
 use crate::{cluster::{ClusterManager, NodeId}, monitor, ZerovisorError};
+use crate::arch_state_translator::{ArchId};
 
 /// Errors that can occur during intra-host memory migration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,7 +164,9 @@ pub fn migrate_vm<E: VirtualizationEngine + Send + Sync + 'static>(
         crate::log!("[migration] warning: downtime {} ns exceeds target", downtime_ns);
     }
 
-    // Phase 4: transmit snapshot
+    // Phase 4: transmit snapshot – prepend architecture id for heterogenous migration
+    let arch_tag = ArchId::X86_64 as u8; // TODO: detect at runtime
+    mgr.transport.send(dest, &[arch_tag]).map_err(|_| ZerovisorError::InitializationFailed)?;
     ctx.stream_snapshot(mgr, dest)?;
 
     // Phase 5: send explicit DONE marker (zero-length packet)
