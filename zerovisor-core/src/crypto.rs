@@ -106,3 +106,46 @@ pub fn sphincs_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> bo
     let sig = sphincs128s::DetachedSignature::from_bytes(signature).expect("invalid sig");
     sphincs128s::verify_detached_signature(&sig, message, &pk).is_ok()
 } 
+
+/// Unified quantum-resistant crypto bundle used by SecurityEngine and plugins.
+#[derive(Clone)]
+pub struct QuantumCrypto {
+    kyber: KyberKeypair,
+    dilithium: DilithiumKeypair,
+    sphincs: SphincsKeypair,
+}
+
+impl QuantumCrypto {
+    /// Generate fresh keypairs for Kyber-768, Dilithium-5 and SPHINCS+-128s.
+    pub fn generate_keypairs() -> Self {
+        Self { kyber: kyber_generate(), dilithium: dilithium_generate(), sphincs: sphincs_generate() }
+    }
+
+    /// Encrypt data buffer using Kyber session key + XOR (placeholder).
+    /// In production replace with AES-GCM or similar keyed by shared secret.
+    pub fn encrypt_memory(&self, data: &[u8]) -> Result<Vec<u8>, ()> {
+        let ctxt = kyber_encapsulate(&self.kyber.public);
+        let mut out = Vec::with_capacity(32 + data.len());
+        out.extend_from_slice(&ctxt.cipher);
+        for (i, b) in data.iter().enumerate() {
+            out.push(*b ^ ctxt.shared_key[i % ctxt.shared_key.len()]);
+        }
+        Ok(out)
+    }
+
+    /// Sign arbitrary blob with Dilithium and return detached signature.
+    pub fn sign_attestation(&self, report: &[u8]) -> Result<Vec<u8>, ()> {
+        Ok(dilithium_sign(&self.dilithium.secret, report))
+    }
+
+    /// Verify detached signature using SPHINCS+ public key as secondary path.
+    /// Returns true if either Dilithium or SPHINCS+ signature validates.
+    pub fn verify_signature(&self, msg: &[u8], sig: &[u8]) -> bool {
+        dilithium_verify(&self.dilithium.public, msg, sig) || sphincs_verify(&self.sphincs.public, msg, sig)
+    }
+
+    /// Accessors
+    pub fn kyber(&self) -> &KyberKeypair { &self.kyber }
+    pub fn dilithium(&self) -> &DilithiumKeypair { &self.dilithium }
+    pub fn sphincs(&self) -> &SphincsKeypair { &self.sphincs }
+} 

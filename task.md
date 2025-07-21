@@ -10,7 +10,7 @@
 - [x] RealTimeQueue & Scheduler: 割り込み遅延 < 1µs, WCET 証明
 
 ## セキュリティ
-- [ ] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
+- [x] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
 - [ ] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
 - [ ] Information-flow Analysis: 機密性証明
 

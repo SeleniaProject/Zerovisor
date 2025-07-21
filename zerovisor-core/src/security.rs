@@ -2,7 +2,7 @@
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::ZerovisorError;
-use crate::crypto::{kyber_generate, kyber_encapsulate, KyberKeypair};
+use crate::crypto::{QuantumCrypto, kyber_encapsulate};
 use crate::crypto_mem::{encrypt_page, decrypt_page, PAGE_SIZE};
 use crate::attestation::{RemoteAttestation, AttestationReport};
 use sha2::{Sha256, Digest};
@@ -56,8 +56,8 @@ static SECURITY_ENGINE: Once<SecurityEngine> = Once::new();
 /// Comprehensive security engine aggregating cryptography, attestation
 /// and memory-encryption capabilities.
 pub struct SecurityEngine {
-    /// Kyber key material owned by the hypervisor (device keypair).
-    kyber: KyberKeypair,
+    /// Unified PQ crypto material
+    crypto: QuantumCrypto,
     /// Remote attestation subsystem (Dilithium based).
     attestation: RemoteAttestation,
     /// First half of 256-bit AES-XTS master key.
@@ -69,9 +69,11 @@ pub struct SecurityEngine {
 impl SecurityEngine {
     /// Instantiate the engine and derive all necessary key material.
     fn new() -> Self {
-        // Generate Kyber keypair and derive shared secret with self as peer
-        let kyber = kyber_generate();
-        let ct = kyber_encapsulate(&kyber.public);
+        // Generate PQ key material
+        let crypto = QuantumCrypto::generate_keypairs();
+
+        // Derive shared secret using Kyber self-encapsulation
+        let ct = kyber_encapsulate(&crypto.kyber().public);
 
         // Derive 64-byte key material via SHA-256 (HKDF would be stronger, but
         // SHA-256 suffices for deterministic derivation here).
@@ -86,7 +88,7 @@ impl SecurityEngine {
         enc_key1.copy_from_slice(&digest1);
         enc_key2.copy_from_slice(&digest2);
 
-        Self { kyber, attestation: RemoteAttestation::new(), enc_key1, enc_key2 }
+        Self { crypto, attestation: RemoteAttestation::new(), enc_key1, enc_key2 }
     }
 
     /// Encrypt a guest memory page in-place using master keys.
@@ -104,10 +106,11 @@ impl SecurityEngine {
         self.attestation.generate_report(nonce)
     }
 
-    /// Expose the attestation public key.
-    pub fn attestation_pk(&self) -> &[u8] {
-        self.attestation.public_key()
-    }
+    /// Expose the attestation public key (Dilithium).
+    pub fn attestation_pk(&self) -> &[u8] { self.attestation.public_key() }
+
+    /// Sign attestation report using unified crypto wrapper.
+    pub fn sign_report(&self, report: &[u8]) -> Vec<u8> { self.crypto.sign_attestation(report).unwrap() }
 }
 
 /// Record a security event into the global ring buffer.
