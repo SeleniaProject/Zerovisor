@@ -13,7 +13,7 @@
 - [x] ライブマイグレーション機能 (メモリ差分・停止時間最小化)
 - [x] 高可用クラスタリング (Byzantine Fault Tolerance 含む)
 - [x] エネルギー最適化 (DVFS, Thermal, カーボンアウェアスケジューリング)
-- [ ] リアルタイム保証 (割り込み遅延 < 1µs, WCET 証明)
+- [x] リアルタイム保証 (割り込み遅延 < 1µs, WCET 証明)
 - [ ] 形式検証 (Coq / TLA+) 自動 CI 統合
 - [ ] MonitoringEngine: UART + Prometheus メトリクスエクスポート
 - [ ] DebugInterface: GDB スタブ・ブレークポイント・トレースポイント

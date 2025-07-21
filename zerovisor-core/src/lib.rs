@@ -45,6 +45,7 @@ pub mod isolation;
 pub mod iommu;
 pub mod numa_optimizer;
 pub mod cluster_bft;
+pub mod realtime;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
