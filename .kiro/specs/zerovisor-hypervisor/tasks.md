@@ -152,7 +152,7 @@
   - コンテナとVMの統合管理を実装
   - _要件: 15.1_
 
-- [ ] 11.2 WebAssembly統合
+- [x] 11.2 WebAssembly統合
   - WASIサポートとサンドボックス実行を実装
   - WebAssemblyモジュール仮想化を実装
   - セキュアWebAssembly実行環境を実装
