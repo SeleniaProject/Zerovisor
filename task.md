@@ -11,7 +11,7 @@
 
 ## セキュリティ
 - [x] QuantumCrypto: Kyber/Dilithium/SPHINCS+ 統合 API
-- [ ] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
+- [x] Formal Verification CI: Coq / TLA+ 自動実行パイプライン
 - [ ] Information-flow Analysis: 機密性証明
 
 ## デバイス仮想化

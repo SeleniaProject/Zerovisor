@@ -42,3 +42,23 @@ else
 fi
 # Doc pass
 cargo doc --no-deps --workspace 
+
+# 3. Apalache model checker (preferred for large state spaces). Uses Docker image if local binary missing.
+if command -v apalache-mc &>/dev/null; then
+  echo "Running Apalache checks..."
+  for spec in formal_specs/*.tla; do
+    echo "Apalache checking ${spec}"
+    apalache-mc check --inv=Inv "${spec}"
+  done
+else
+  echo "apalache-mc not found; attempting Docker execution"
+  if command -v docker &>/dev/null; then
+    for spec in $(ls formal_specs/*.tla); do
+      echo "Docker Apalache checking ${spec}"
+      docker run --rm -v "${PWD}":/workspace apalache/mc:latest check --inv=Inv "/workspace/${spec}"
+    done
+  else
+    echo "Apalache unavailable; skipping advanced model checking"
+  fi
+fi
+# --------------------------------------------------------------------------- 
