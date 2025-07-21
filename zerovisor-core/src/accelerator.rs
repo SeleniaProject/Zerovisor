@@ -12,6 +12,9 @@ use zerovisor_hal::{AcceleratorVirtualization, AcceleratorInfo, AcceleratorId, A
 #[cfg(target_arch = "x86_64")]
 use zerovisor_hal::arch::x86_64::X86AcceleratorManager as ArchAccelMgr;
 
+#[cfg(target_arch = "riscv64")]
+use zerovisor_hal::arch::riscv64::RiscvAcceleratorManager as ArchAccelMgr;
+
 static ACCEL_MANAGER: Once<ArchAccelMgr> = Once::new();
 
 /// 初期化

@@ -11,4 +11,7 @@ pub mod iommu;
 
 pub use iommu::RiscvIommuEngine as ArchIommu;
 
-pub use ept_manager::EptHierarchy as Stage2Manager; 
+pub use ept_manager::EptHierarchy as Stage2Manager;
+
+pub mod accelerator;
+pub use accelerator::RiscvAcceleratorManager; 

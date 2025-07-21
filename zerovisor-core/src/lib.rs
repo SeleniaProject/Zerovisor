@@ -58,6 +58,8 @@ pub mod info_flow;
 pub mod arch_state_translator;
 pub mod homomorphic_mem;
 pub mod storage_manager;
+pub mod nic_manager;
+pub mod cluster_runtime;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
@@ -107,6 +109,9 @@ pub fn init() -> Result<(), ZerovisorError> {
     {
         ha::init();
     }
+
+    // Initialize PBFT/exascale cluster runtime
+    cluster_runtime::init(crate::cluster::NodeId(0));
 
     Ok(())
 }

@@ -18,11 +18,11 @@
 
 ## デバイス仮想化
 - [x] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
-- [ ] SR-IOV NIC & Storage デバイスのパススルー
-- [ ] Accelerators: RISC-V Vector, AI Engine 対応
+- [x] SR-IOV NIC & Storage デバイスのパススルー
+- [x] Accelerators: RISC-V Vector, AI Engine 対応
 
 ## 高可用 & 分散
-- [ ] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
+- [x] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
 - [ ] BFT クラスタリング: Byzantine Fault Tolerance
 
 ## エネルギー & 環境
