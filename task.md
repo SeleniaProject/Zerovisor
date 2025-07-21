@@ -15,9 +15,9 @@
 - [x] Information-flow Analysis: 機密性証明
 
 ## デバイス仮想化
-- [ ] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
-- [ ] SR-IOV NIC & Storage デバイスのパススルー
-- [ ] Accelerators: RISC-V Vector, AI Engine 対応
+- [x] GPU / TPU / FPGA / QPU 仮想化 (SR-IOV, MIG)
+- [x] SR-IOV NIC & Storage デバイスのパススルー
+- [x] Accelerators: RISC-V Vector, AI Engine 対応
 
 ## 高可用 & 分散
 - [ ] ClusterBFT: f>1 ノード拡張 & ログ圧縮
