@@ -8,10 +8,10 @@
 #![allow(dead_code)]
 
 extern crate alloc;
+use alloc::collections::BTreeSet;
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use spin::Once;
-use hashbrown::{HashMap, HashSet};
 use core::cmp::min;
 
 use zerovisor_hal::virtualization::{VmConfig, VmHandle};
@@ -25,9 +25,9 @@ pub type NumaNode = u16;
 pub struct NumaTopology {
     pub nodes: Vec<NumaNode>,
     /// Map node → bitmask of CPUs (logical ids)
-    pub cpu_mask: HashMap<NumaNode, u64>,
+    pub cpu_mask: BTreeMap<NumaNode, u64>,
     /// Node memory size (bytes)
-    pub memory_size: HashMap<NumaNode, u64>,
+    pub memory_size: BTreeMap<NumaNode, u64>,
 }
 
 impl NumaTopology {
@@ -41,7 +41,7 @@ impl NumaTopology {
             {
                 use core::arch::x86_64::__cpuid_count;
                 // Enumerate core topology; count unique x2APIC IDs with level type 0 (SMT) and 1 (core).
-                let mut pkg_ids = HashSet::new();
+                let mut pkg_ids = BTreeSet::new();
                 for level in 0..8 {
                     let reg = __cpuid_count(0xB, level);
                     if (reg.ecx & 0xFF00) >> 8 == 0 { continue; }
@@ -58,8 +58,8 @@ impl NumaTopology {
 
         let node_count = core::cmp::max(1, sockets);
         let mut nodes = Vec::new();
-        let mut cpu_mask = HashMap::new();
-        let mut memory_size = HashMap::new();
+        let mut cpu_mask = BTreeMap::new();
+        let mut memory_size = BTreeMap::new();
 
         // Distribute CPUs and memory equally across nodes (example).
         let total_cpus = 64u8; // future: detect logical CPU count.
@@ -91,9 +91,9 @@ impl NumaTopology {
 pub struct NumaOptimizer {
     topo: NumaTopology,
     /// Current VM→node mapping
-    affinity: spin::Mutex<HashMap<VmHandle, NumaNode>>,
+    affinity: spin::Mutex<BTreeMap<VmHandle, NumaNode>>,
     /// VM resource info for load estimation
-    vm_info: spin::Mutex<HashMap<VmHandle, VmInfo>>,
+    vm_info: spin::Mutex<BTreeMap<VmHandle, VmInfo>>,
 }
 
 /// Per-VM resource usage record
@@ -104,8 +104,8 @@ impl NumaOptimizer {
     pub fn new() -> Self {
         Self {
             topo: NumaTopology::detect(),
-            affinity: spin::Mutex::new(HashMap::new()),
-            vm_info: spin::Mutex::new(HashMap::new()),
+            affinity: spin::Mutex::new(BTreeMap::new()),
+            vm_info: spin::Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -126,7 +126,7 @@ impl NumaOptimizer {
             if free > max_free { max_free = free; candidate = node; }
         }
         self.affinity.lock().insert(cfg.id, candidate);
-        self.vm_info.lock().insert(cfg.id, VmInfo { mem_bytes: cfg.memory_size, vcpu_count: cfg.cpu_count });
+        self.vm_info.lock().insert(cfg.id, VmInfo { mem_bytes: cfg.memory_size, vcpu_count: cfg.vcpu_count });
         candidate
     }
 
@@ -149,7 +149,7 @@ impl NumaOptimizer {
 
         #[derive(Default)]
         struct Load { used_mem: u64, vcpus: u32 }
-        let mut load: HashMap<NumaNode, Load> = HashMap::new();
+        let mut load: BTreeMap<NumaNode, Load> = BTreeMap::new();
         for (&vm, &node) in aff_guard.iter() {
             if let Some(info) = info_guard.get(&vm) {
                 let entry = load.entry(node).or_default();
