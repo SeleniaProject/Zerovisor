@@ -1,0 +1,48 @@
+name: Zerovisor CI & Formal Verification
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install verification dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tlapm coq docker.io unzip curl default-jre
+          # Install Apalache model checker
+          curl -sL https://github.com/informalsystems/apalache/releases/latest/download/apalache-0.40.2-linux.zip -o apalache.zip
+          unzip -q apalache.zip -d $HOME/.local/bin
+          chmod +x $HOME/.local/bin/apalache-mc || true
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Run complete test & verification suite
+        run: |
+          chmod +x scripts/ci_run_tests.sh
+          ./scripts/ci_run_tests.sh 
