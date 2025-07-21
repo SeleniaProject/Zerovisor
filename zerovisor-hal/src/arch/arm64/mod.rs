@@ -1,0 +1,6 @@
+//! ARM64 architecture support for Zerovisor HAL
+#![cfg(target_arch = "aarch64")]
+
+pub mod cpu;
+
+pub use cpu::ArmCpu; 

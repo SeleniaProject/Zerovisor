@@ -34,7 +34,12 @@ pub use power::{DvfsController, ThermalSensor, PState, Temperature, PowerError};
 // Re-export architecture specific CPU implementations when available
 #[cfg(target_arch = "x86_64")]
 pub use arch::x86_64::X86Cpu as ArchCpu;
-// ARM64 and RISC-V re-exports will follow
+
+#[cfg(target_arch = "aarch64")]
+pub use arch::arm64::ArmCpu as ArchCpu;
+
+#[cfg(target_arch = "riscv64")]
+pub use arch::riscv64::RiscVCpu as ArchCpu;
 
 /// Initialize the HAL for the current architecture
 pub fn init() -> Result<(), HalError> {
@@ -46,13 +51,14 @@ pub fn init() -> Result<(), HalError> {
 
     #[cfg(target_arch = "aarch64")]
     {
-        // TODO: ARM64 initialization will be added soon
-        return Err(HalError::UnsupportedArchitecture);
+        let _cpu = ArchCpu::init().map_err(|_| HalError::HardwareNotSupported)?;
+        return Ok(());
     }
 
     #[cfg(target_arch = "riscv64")]
     {
-        return Err(HalError::UnsupportedArchitecture);
+        let _cpu = ArchCpu::init().map_err(|_| HalError::HardwareNotSupported)?;
+        return Ok(());
     }
 }
 
