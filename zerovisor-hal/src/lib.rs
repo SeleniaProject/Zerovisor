@@ -16,6 +16,7 @@ pub mod arch; // New architecture-specific module tree
 pub mod gpu;
 pub mod nic;
 pub mod power;
+pub mod storage;
 pub mod accelerator;
 pub mod rdma_opt;
 pub mod rdma_vnet;

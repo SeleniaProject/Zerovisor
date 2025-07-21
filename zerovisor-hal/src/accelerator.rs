@@ -12,6 +12,10 @@ pub enum AcceleratorType {
     Npu,
     Fpga,
     Qpu,
+    /// RISC-V Vector Engine (RVV)
+    Vector,
+    /// AI Engine / DSP blocks (e.g., Xilinx AIE)
+    AiEngine,
 }
 
 /// アクセラレータ ID (Bus/Device/Function などを抽象化)
