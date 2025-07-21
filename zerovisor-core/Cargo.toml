@@ -28,3 +28,4 @@ coq_proofs = []
 
 [dev-dependencies]
 proptest = "1.4"
+trybuild = "1.0.72"

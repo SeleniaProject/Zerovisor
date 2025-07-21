@@ -17,9 +17,9 @@ bitvec = "1"
 crc32fast = "1"
 serde = { version = "1", default-features = false, features = ["derive"] }
 wasmi = { version = "0.31", default-features = false }
-pqcrypto-kyber = { version = "0.8", default-features = false, features = ["kyber512"] }
-pqcrypto-dilithium = { version = "0.8", default-features = false, features = ["dilithium3"] }
-pqcrypto-sphincsplus = { version = "0.8", default-features = false, features = ["shake256s128f"] }
+pqcrypto-kyber = { version = "0.5.0", default-features = false }
+pqcrypto-dilithium = { version = "0.5.0", default-features = false }
+pqcrypto-sphincsplus = { version = "0.5.0", default-features = false }
 
 [features]
 default = []
