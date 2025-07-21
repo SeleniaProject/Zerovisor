@@ -20,7 +20,7 @@
 - [x] Accelerators: RISC-V Vector, AI Engine 対応
 
 ## 高可用 & 分散
-- [ ] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
+- [x] Exascale スケールアウト (>1M コア, InfiniBand 最適化)
 
 ## エネルギー & 環境
 - [ ] EnergyManager: DVFS + Thermal + Carbon-aware スケジューリング

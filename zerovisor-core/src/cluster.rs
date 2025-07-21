@@ -5,6 +5,7 @@
 
 extern crate alloc;
 use alloc::vec::Vec;
+use bitvec::prelude::*;
 use alloc::collections::BTreeMap;
 use core::time::Duration;
 use spin::{Mutex, Once};
@@ -54,19 +55,25 @@ impl<'a> ClusterTransport<'a> {
 /// Simple cluster manager maintaining membership and leader id.
 pub struct ClusterManager<'a> {
     transport: ClusterTransport<'a>,
-    members: Mutex<Vec<NodeId>>,
+    members: Mutex<BitVec<Lsb0, u8>>, // bitmap up to MAX_NODES
     leader: Mutex<Option<NodeId>>,
 }
 
 static CLUSTER_MGR: Once<ClusterManager<'static>> = Once::new();
 static PBFT: Once<PbftEngine<'static>> = Once::new();
 
+const MAX_NODES: usize = 1_048_576; // 1M cores assumption (one node per core sample)
+
 impl<'a> ClusterManager<'a> {
     pub fn init(nic: &'a dyn HpcNic, self_id: NodeId) {
-        CLUSTER_MGR.call_once(|| ClusterManager {
-            transport: ClusterTransport::new(nic),
-            members: Mutex::new(vec![self_id]),
-            leader: Mutex::new(Some(self_id)),
+        CLUSTER_MGR.call_once(|| {
+            let mut bv = bitvec![u8, Lsb0; 0; MAX_NODES];
+            bv.set(self_id.0 as usize, true);
+            ClusterManager {
+                transport: ClusterTransport::new(nic),
+                members: Mutex::new(bv),
+                leader: Mutex::new(Some(self_id)),
+            }
         });
         // Initialize PBFT engine now that ClusterManager exists
         let mgr_ref = CLUSTER_MGR.get().unwrap();
@@ -76,7 +83,15 @@ impl<'a> ClusterManager<'a> {
     pub fn global() -> &'static ClusterManager<'static> { CLUSTER_MGR.get().expect("cluster mgr") }
 
     /// Add new node (simple join)
-    pub fn add_node(&self, node: NodeId) { self.members.lock().push(node); }
+    pub fn add_node(&self, node: NodeId) { self.members.lock().set(node.0 as usize, true); }
+
+    /// Iterate members efficiently
+    fn each_member<F: FnMut(NodeId)>(&self, mut f: F) {
+        let bv = self.members.lock();
+        for (idx, bit) in bv.iter().enumerate() {
+            if *bit { f(NodeId(idx as u32)); }
+        }
+    }
 
     /// Current leader
     pub fn leader(&self) -> Option<NodeId> { *self.leader.lock() }
@@ -84,13 +99,10 @@ impl<'a> ClusterManager<'a> {
     pub fn broadcast(&self, msg: &ClusterMsg) {
         // Pre-allocated scratch buffer big enough for typical control messages
         let mut buf = [0u8; 256];
-        for &node in self.members.lock().iter() {
-            // Skip self
-            if Some(node) == self.leader() {
-                continue;
-            }
+        self.each_member(|node| {
+            if Some(node) == self.leader() { return; }
             let _ = self.transport.send_msg(node, msg, &mut buf);
-        }
+        });
     }
 
     /// Poll NIC completions and decode cluster messages (placeholder).
