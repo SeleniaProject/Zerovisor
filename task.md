@@ -14,7 +14,7 @@
 - [x] 高可用クラスタリング (Byzantine Fault Tolerance 含む)
 - [x] エネルギー最適化 (DVFS, Thermal, カーボンアウェアスケジューリング)
 - [x] リアルタイム保証 (割り込み遅延 < 1µs, WCET 証明)
-- [ ] 形式検証 (Coq / TLA+) 自動 CI 統合
+- [x] 形式検証 (Coq / TLA+) 自動 CI 統合
 - [ ] MonitoringEngine: UART + Prometheus メトリクスエクスポート
 - [ ] DebugInterface: GDB スタブ・ブレークポイント・トレースポイント
 - [ ] PluginManager & HypervisorPlugin フレームワーク
