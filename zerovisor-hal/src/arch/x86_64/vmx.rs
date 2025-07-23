@@ -40,7 +40,7 @@ use crate::memory::{MemoryFlags, PhysicalAddress};
 use crate::virtualization::{VirtualizationEngine, VmConfig, VcpuConfig, VmExitReason, VmExitAction, VmHandle, VcpuHandle, VmStats};
 use crate::cpu::CpuState;
 use crate::virtualization::arch::vmx::VmxEngine;
-use crate::arch::x86_64::vmcs::{Vmcs, VmcsError, VmcsField};
+use crate::arch::x86_64::vmcs::{Vmcs, VmcsError, VmcsField, VmcsState};
 use crate::arch::x86_64::vmcs::ActiveVmcs;
 use crate::arch::x86_64::ept::EptFlags;
 use crate::arch::x86_64::ept_manager::EptHierarchy;
@@ -96,6 +96,7 @@ struct Vcpu {
     handle: VcpuHandle,
     config: VcpuConfig,
     vmcs_region: PhysicalAddress,
+    vmcs_state: VmcsState,
     launched: bool,
 }
 
@@ -220,7 +221,13 @@ impl VirtualizationEngine for VmxEngine {
         // Allocate VMCS region per-VCPU
         let vmcs_phys = Self::allocate_vmcs_region()?;
 
-        vm_entry.vcpus.push(Vcpu { handle, config: config.clone(), vmcs_region: vmcs_phys, launched: false });
+        vm_entry.vcpus.push(Vcpu { 
+            handle, 
+            config: config.clone(), 
+            vmcs_region: vmcs_phys, 
+            vmcs_state: VmcsState::default(),
+            launched: false 
+        });
         Ok(handle)
     }
 
@@ -239,27 +246,20 @@ impl VirtualizationEngine for VmxEngine {
 
         let mut active = vmcs.load()?;
 
-        // Minimal guest/host state setup ---------------------------------
-        const CR0_PE: u64 = 1 << 0; // Protected mode enable
-        const CR0_PG: u64 = 1 << 31; // Paging enable
-        const CR4_VMXE: u64 = 1 << 13;
-
-        // Guest state
-        active.write(VmcsField::GUEST_CR0, CR0_PE | CR0_PG);
-        active.write(VmcsField::GUEST_CR3, 0x0);
-        active.write(VmcsField::GUEST_CR4, CR4_VMXE);
-        active.write(VmcsField::GUEST_RIP, 0x1000); // dummy guest entry
-        active.write(VmcsField::GUEST_RSP, 0x8000);
-
-        // Host state (use current values placeholder)
-        active.write(VmcsField::HOST_CR0, CR0_PE | CR0_PG);
-        active.write(VmcsField::HOST_CR3, 0x0);
-        active.write(VmcsField::HOST_CR4, CR4_VMXE);
-        active.write(VmcsField::HOST_RIP, run_host_resume as u64);
-
-        // EPT pointer from hierarchy
-        let ept_pml4 = vm.ept.phys_root();
-        active.write(VmcsField::EPT_POINTER, ept_pml4 | (3 << 3));
+        // Complete VMCS state setup using comprehensive field implementation
+        if !vcpu_entry.launched {
+            // Initialize VMCS state with proper values
+            Self::setup_vmcs_controls(&mut vcpu_entry.vmcs_state)?;
+            Self::setup_host_state(&mut vcpu_entry.vmcs_state)?;
+            Self::setup_guest_state(&mut vcpu_entry.vmcs_state, &vcpu_entry.config)?;
+            
+            // Set EPT pointer from hierarchy
+            let ept_pml4 = vm.ept.phys_root();
+            vcpu_entry.vmcs_state.ept_pointer = ept_pml4 | (3 << 3) | (6 << 0); // Memory type 6 (WB)
+            
+            // Load complete state into VMCS
+            active.load_state(&vcpu_entry.vmcs_state);
+        }
 
         // ---------------------------------------------------------------
 
@@ -437,6 +437,263 @@ impl VmxEngine {
         }
     }
 
+    /// Setup comprehensive VMCS control fields
+    fn setup_vmcs_controls(vmcs_state: &mut VmcsState) -> Result<(), VmxError> {
+        // Pin-based VM execution controls
+        vmcs_state.pin_based_controls = 0x00000016; // External interrupt exiting, NMI exiting
+        
+        // Primary processor-based VM execution controls
+        vmcs_state.cpu_based_controls = 0x84006172; // HLT exiting, INVLPG exiting, MWAIT exiting, RDPMC exiting, RDTSC exiting, CR3 load/store exiting, CR8 load/store exiting, Use I/O bitmaps, Use MSR bitmaps, Secondary controls
+        
+        // Secondary processor-based VM execution controls
+        vmcs_state.secondary_controls = 0x00000082; // Enable EPT, Enable RDTSCP
+        
+        // VM-exit controls
+        vmcs_state.vm_exit_controls = 0x00036DFF; // Save debug controls, Host address-space size, Load IA32_PERF_GLOBAL_CTRL, Save IA32_PAT, Load IA32_PAT, Save IA32_EFER, Load IA32_EFER
+        
+        // VM-entry controls
+        vmcs_state.vm_entry_controls = 0x000011FF; // Load debug controls, IA-32e mode guest, Load IA32_PERF_GLOBAL_CTRL, Load IA32_PAT, Load IA32_EFER
+        
+        // Exception bitmap - intercept all exceptions initially
+        vmcs_state.exception_bitmap = 0xFFFFFFFF;
+        
+        // CR0/CR4 guest/host masks and read shadows
+        vmcs_state.cr0_guest_host_mask = 0x80000021; // PG, PE bits controlled by hypervisor
+        vmcs_state.cr4_guest_host_mask = 0x00002000; // VMXE bit controlled by hypervisor
+        vmcs_state.cr0_read_shadow = 0x80000031; // What guest thinks CR0 contains
+        vmcs_state.cr4_read_shadow = 0x00000000; // What guest thinks CR4 contains
+        
+        Ok(())
+    }
+    
+    /// Setup comprehensive host state from current CPU state
+    fn setup_host_state(vmcs_state: &mut VmcsState) -> Result<(), VmxError> {
+        // Read current CPU state for host
+        unsafe {
+            // Control registers
+            vmcs_state.host_cr0 = Self::read_cr0();
+            vmcs_state.host_cr3 = Self::read_cr3();
+            vmcs_state.host_cr4 = Self::read_cr4();
+            
+            // Segment selectors
+            vmcs_state.host_es_selector = Self::read_es();
+            vmcs_state.host_cs_selector = Self::read_cs();
+            vmcs_state.host_ss_selector = Self::read_ss();
+            vmcs_state.host_ds_selector = Self::read_ds();
+            vmcs_state.host_fs_selector = Self::read_fs();
+            vmcs_state.host_gs_selector = Self::read_gs();
+            vmcs_state.host_tr_selector = Self::read_tr();
+            
+            // Base addresses
+            vmcs_state.host_fs_base = Self::read_msr(0xC0000100); // IA32_FS_BASE
+            vmcs_state.host_gs_base = Self::read_msr(0xC0000101); // IA32_GS_BASE
+            vmcs_state.host_tr_base = Self::read_tr_base();
+            vmcs_state.host_gdtr_base = Self::read_gdtr_base();
+            vmcs_state.host_idtr_base = Self::read_idtr_base();
+            
+            // MSRs
+            vmcs_state.host_ia32_pat = Self::read_msr(0x277); // IA32_PAT
+            vmcs_state.host_ia32_efer = Self::read_msr(0xC0000080); // IA32_EFER
+            vmcs_state.host_ia32_perf_global_ctrl = Self::read_msr(0x38F); // IA32_PERF_GLOBAL_CTRL
+            vmcs_state.host_ia32_sysenter_cs = Self::read_msr(0x174) as u32; // IA32_SYSENTER_CS
+            vmcs_state.host_ia32_sysenter_esp = Self::read_msr(0x175); // IA32_SYSENTER_ESP
+            vmcs_state.host_ia32_sysenter_eip = Self::read_msr(0x176); // IA32_SYSENTER_EIP
+            
+            // Host RIP will be set to VM exit handler
+            vmcs_state.host_rip = run_host_resume as u64;
+            
+            // Host RSP will be set to current stack
+            let mut rsp: u64;
+            core::arch::asm!("mov {}, rsp", out(reg) rsp);
+            vmcs_state.host_rsp = rsp;
+        }
+        
+        Ok(())
+    }
+    
+    /// Setup comprehensive guest state from VCPU configuration
+    fn setup_guest_state(vmcs_state: &mut VmcsState, config: &VcpuConfig) -> Result<(), VmxError> {
+        // Initialize guest state from VCPU config
+        let cpu_state = &config.initial_state;
+        
+        // Control registers
+        vmcs_state.guest_cr0 = cpu_state.cr0;
+        vmcs_state.guest_cr3 = cpu_state.cr3;
+        vmcs_state.guest_cr4 = cpu_state.cr4;
+        vmcs_state.guest_dr7 = cpu_state.dr7;
+        
+        // General purpose registers
+        vmcs_state.guest_rax = cpu_state.rax;
+        vmcs_state.guest_rbx = cpu_state.rbx;
+        vmcs_state.guest_rcx = cpu_state.rcx;
+        vmcs_state.guest_rdx = cpu_state.rdx;
+        vmcs_state.guest_rsi = cpu_state.rsi;
+        vmcs_state.guest_rdi = cpu_state.rdi;
+        vmcs_state.guest_rbp = cpu_state.rbp;
+        vmcs_state.guest_rsp = cpu_state.rsp;
+        vmcs_state.guest_r8 = cpu_state.r8;
+        vmcs_state.guest_r9 = cpu_state.r9;
+        vmcs_state.guest_r10 = cpu_state.r10;
+        vmcs_state.guest_r11 = cpu_state.r11;
+        vmcs_state.guest_r12 = cpu_state.r12;
+        vmcs_state.guest_r13 = cpu_state.r13;
+        vmcs_state.guest_r14 = cpu_state.r14;
+        vmcs_state.guest_r15 = cpu_state.r15;
+        
+        // Instruction pointer and flags
+        vmcs_state.guest_rip = cpu_state.rip;
+        vmcs_state.guest_rflags = cpu_state.rflags;
+        
+        // Segment registers from CPU state
+        vmcs_state.guest_es_selector = cpu_state.es.selector;
+        vmcs_state.guest_cs_selector = cpu_state.cs.selector;
+        vmcs_state.guest_ss_selector = cpu_state.ss.selector;
+        vmcs_state.guest_ds_selector = cpu_state.ds.selector;
+        vmcs_state.guest_fs_selector = cpu_state.fs.selector;
+        vmcs_state.guest_gs_selector = cpu_state.gs.selector;
+        
+        vmcs_state.guest_es_base = cpu_state.es.base;
+        vmcs_state.guest_cs_base = cpu_state.cs.base;
+        vmcs_state.guest_ss_base = cpu_state.ss.base;
+        vmcs_state.guest_ds_base = cpu_state.ds.base;
+        vmcs_state.guest_fs_base = cpu_state.fs.base;
+        vmcs_state.guest_gs_base = cpu_state.gs.base;
+        
+        vmcs_state.guest_es_limit = cpu_state.es.limit;
+        vmcs_state.guest_cs_limit = cpu_state.cs.limit;
+        vmcs_state.guest_ss_limit = cpu_state.ss.limit;
+        vmcs_state.guest_ds_limit = cpu_state.ds.limit;
+        vmcs_state.guest_fs_limit = cpu_state.fs.limit;
+        vmcs_state.guest_gs_limit = cpu_state.gs.limit;
+        
+        vmcs_state.guest_es_ar_bytes = cpu_state.es.access_rights;
+        vmcs_state.guest_cs_ar_bytes = cpu_state.cs.access_rights;
+        vmcs_state.guest_ss_ar_bytes = cpu_state.ss.access_rights;
+        vmcs_state.guest_ds_ar_bytes = cpu_state.ds.access_rights;
+        vmcs_state.guest_fs_ar_bytes = cpu_state.fs.access_rights;
+        vmcs_state.guest_gs_ar_bytes = cpu_state.gs.access_rights;
+        
+        // Descriptor tables
+        vmcs_state.guest_gdtr_base = cpu_state.gdtr.base;
+        vmcs_state.guest_gdtr_limit = cpu_state.gdtr.limit as u32;
+        vmcs_state.guest_idtr_base = cpu_state.idtr.base;
+        vmcs_state.guest_idtr_limit = cpu_state.idtr.limit as u32;
+        
+        // Task register and LDT
+        vmcs_state.guest_tr_selector = cpu_state.tr.selector;
+        vmcs_state.guest_tr_base = cpu_state.tr.base;
+        vmcs_state.guest_tr_limit = cpu_state.tr.limit;
+        vmcs_state.guest_tr_ar_bytes = cpu_state.tr.access_rights;
+        
+        vmcs_state.guest_ldtr_selector = cpu_state.ldtr.selector;
+        vmcs_state.guest_ldtr_base = cpu_state.ldtr.base;
+        vmcs_state.guest_ldtr_limit = cpu_state.ldtr.limit;
+        vmcs_state.guest_ldtr_ar_bytes = cpu_state.ldtr.access_rights;
+        
+        // MSRs
+        vmcs_state.guest_ia32_debugctl = cpu_state.ia32_debugctl;
+        vmcs_state.guest_ia32_pat = cpu_state.ia32_pat;
+        vmcs_state.guest_ia32_efer = cpu_state.ia32_efer;
+        vmcs_state.guest_ia32_perf_global_ctrl = cpu_state.ia32_perf_global_ctrl;
+        vmcs_state.guest_ia32_sysenter_cs = cpu_state.ia32_sysenter_cs;
+        vmcs_state.guest_ia32_sysenter_esp = cpu_state.ia32_sysenter_esp;
+        vmcs_state.guest_ia32_sysenter_eip = cpu_state.ia32_sysenter_eip;
+        
+        Ok(())
+    }
+    
+    /// Helper functions to read current CPU state
+    unsafe fn read_cr0() -> u64 {
+        let cr0: u64;
+        core::arch::asm!("mov {}, cr0", out(reg) cr0);
+        cr0
+    }
+    
+    unsafe fn read_cr3() -> u64 {
+        let cr3: u64;
+        core::arch::asm!("mov {}, cr3", out(reg) cr3);
+        cr3
+    }
+    
+    unsafe fn read_cr4() -> u64 {
+        let cr4: u64;
+        core::arch::asm!("mov {}, cr4", out(reg) cr4);
+        cr4
+    }
+    
+    unsafe fn read_es() -> u16 {
+        let es: u16;
+        core::arch::asm!("mov {0:x}, es", out(reg) es);
+        es
+    }
+    
+    unsafe fn read_cs() -> u16 {
+        let cs: u16;
+        core::arch::asm!("mov {0:x}, cs", out(reg) cs);
+        cs
+    }
+    
+    unsafe fn read_ss() -> u16 {
+        let ss: u16;
+        core::arch::asm!("mov {0:x}, ss", out(reg) ss);
+        ss
+    }
+    
+    unsafe fn read_ds() -> u16 {
+        let ds: u16;
+        core::arch::asm!("mov {0:x}, ds", out(reg) ds);
+        ds
+    }
+    
+    unsafe fn read_fs() -> u16 {
+        let fs: u16;
+        core::arch::asm!("mov {0:x}, fs", out(reg) fs);
+        fs
+    }
+    
+    unsafe fn read_gs() -> u16 {
+        let gs: u16;
+        core::arch::asm!("mov {0:x}, gs", out(reg) gs);
+        gs
+    }
+    
+    unsafe fn read_tr() -> u16 {
+        let tr: u16;
+        core::arch::asm!("str {0:x}", out(reg) tr);
+        tr
+    }
+    
+    unsafe fn read_msr(msr: u32) -> u64 {
+        let (high, low): (u32, u32);
+        core::arch::asm!("rdmsr", in("ecx") msr, out("eax") low, out("edx") high);
+        ((high as u64) << 32) | (low as u64)
+    }
+    
+    unsafe fn read_tr_base() -> u64 {
+        // Read TR base from GDT
+        let tr = Self::read_tr();
+        let gdtr_base = Self::read_gdtr_base();
+        let gdt_entry = gdtr_base + (tr as u64 & !7);
+        let descriptor = core::ptr::read_volatile(gdt_entry as *const u64);
+        
+        // Extract base address from TSS descriptor
+        let base_low = (descriptor >> 16) & 0xFFFFFF;
+        let base_high = (descriptor >> 56) & 0xFF;
+        base_low | (base_high << 24)
+    }
+    
+    unsafe fn read_gdtr_base() -> u64 {
+        let mut gdtr: [u8; 10] = [0; 10];
+        core::arch::asm!("sgdt [{}]", in(reg) gdtr.as_mut_ptr());
+        u64::from_le_bytes([gdtr[2], gdtr[3], gdtr[4], gdtr[5], gdtr[6], gdtr[7], gdtr[8], gdtr[9]])
+    }
+    
+    unsafe fn read_idtr_base() -> u64 {
+        let mut idtr: [u8; 10] = [0; 10];
+        core::arch::asm!("sidt [{}]", in(reg) idtr.as_mut_ptr());
+        u64::from_le_bytes([idtr[2], idtr[3], idtr[4], idtr[5], idtr[6], idtr[7], idtr[8], idtr[9]])
+    }
+
     pub fn handle_vm_exit_slow(&mut self, vcpu: VcpuHandle, reason: VmExitReason) -> Result<VmExitAction, VmxError> {
         match reason {
             VmExitReason::Hlt => Ok(VmExitAction::Shutdown),
@@ -481,7 +738,8 @@ impl VmxEngine {
                             }
                         }
                     }
-                    Ok(VmExitAction::Continue)
+                    // For other I/O ports, use generic emulation
+                    Ok(VmExitAction::Emulate)
                 } else {
                     Ok(VmExitAction::Emulate)
                 }

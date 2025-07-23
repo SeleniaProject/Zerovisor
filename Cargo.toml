@@ -24,6 +24,9 @@ pqcrypto-sphincsplus = { version = "0.5.0", default-features = false }
 [features]
 default = []
 experimental = []
+formal_verification = []
+coq_proofs = []
+homomorphic_encryption = []
 
 [workspace]
 members = [
