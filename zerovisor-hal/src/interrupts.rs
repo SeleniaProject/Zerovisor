@@ -1,6 +1,7 @@
 //! Interrupt handling abstraction layer
 
 use bitflags::bitflags;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Interrupt vector number
 pub type InterruptVector = u8;
@@ -147,3 +148,20 @@ pub struct RealTimeConstraints {
     /// Whether interrupt is critical for real-time operation
     pub critical: bool,
 }
+
+/// Maximum observed interrupt latency (ns) – updated atomically at runtime.
+static MAX_OBSERVED_LATENCY_NS: AtomicU64 = AtomicU64::new(0);
+
+/// Record measured latency so that worst-case can be verified.
+#[inline]
+pub fn record_latency_ns(latency: u64) {
+    // Relaxed ordering is sufficient – monotonic max update.
+    let mut prev = MAX_OBSERVED_LATENCY_NS.load(Ordering::Relaxed);
+    while latency > prev && MAX_OBSERVED_LATENCY_NS.compare_exchange(prev, latency, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+        prev = MAX_OBSERVED_LATENCY_NS.load(Ordering::Relaxed);
+    }
+}
+
+/// Fetch worst-case latency recorded so far.
+#[inline]
+pub fn worst_case_latency_ns() -> u64 { MAX_OBSERVED_LATENCY_NS.load(Ordering::Relaxed) }

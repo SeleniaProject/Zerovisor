@@ -13,10 +13,23 @@ serde_json = "1"
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 anyhow = "1"
 
+# gRPC / Protobuf stack for CRI runtime server
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tonic = { version = "0.10", features = ["transport"] }
+prost = "0.12"
+prost-types = "0.12"
+
 [lib]
 name = "zvi_sdk"
 path = "src/lib.rs"
 
 [[bin]]
 name = "zvi-cli"
-path = "src/bin/cli.rs" 
+path = "src/bin/cli.rs"
+
+[[bin]]
+name = "zvi-cri"
+path = "src/bin/cri_server.rs"
+
+[build-dependencies]
+tonic-build = "0.10" 

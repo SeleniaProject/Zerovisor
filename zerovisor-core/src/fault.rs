@@ -5,6 +5,7 @@ pub enum LogEntryKind {
     VmCreate,
     VmDestroy,
     MemMapUpdate,
+    VmPlacement,
     Custom(u8),
 }
 
@@ -26,4 +27,11 @@ pub enum Msg {
     PrePrepare { view: u64, seq: u64, digest: u64 },
     Prepare { view: u64, seq: u64, digest: u64 },
     Commit { view: u64, seq: u64, digest: u64 },
+    // HotStuff consensus messages (prepare -> pre-commit -> commit -> decide)
+    HsProposal { view: u64, height: u64, parent_qc: u64, digest: u64 },
+    HsVote { view: u64, height: u64, digest: u64 },
+    HsNewView { view: u64, qc: u64 },
+    // Generic small control message with 1-byte discriminator.
+    Custom(u8, &'static [u8]),
+    IsolateVm { vm: u32 },
 } 

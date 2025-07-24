@@ -23,6 +23,8 @@ static mut METRICS_PAGE: MetricsPage = MetricsPage(PerformanceMetrics {
     numa_misses: 0,
     max_wcet_ns: 0,
     max_irq_latency_ns: 0,
+    avg_cold_start_ns: 0,
+    max_cold_start_ns: 0,
     timestamp_ns: 0,
 });
 
@@ -36,6 +38,8 @@ pub struct PerformanceMetrics {
     pub numa_misses: u64,
     pub max_wcet_ns: u64,
     pub max_irq_latency_ns: u64,
+    pub avg_cold_start_ns: u64,
+    pub max_cold_start_ns: u64,
     pub timestamp_ns: u64,
 }
 
@@ -46,6 +50,9 @@ static SHARED_PAGES: AtomicU64 = AtomicU64::new(0);
 static NUMA_MISSES: AtomicU64 = AtomicU64::new(0);
 static MAX_WCET_NS: AtomicU64 = AtomicU64::new(0);
 static MAX_IRQ_LATENCY_NS: AtomicU64 = AtomicU64::new(0);
+static TOTAL_COLD_START_NS: AtomicU64 = AtomicU64::new(0);
+static TOTAL_COLD_STARTS: AtomicU64 = AtomicU64::new(0);
+static MAX_COLD_START_NS: AtomicU64 = AtomicU64::new(0);
 
 #[inline]
 pub fn record_vmexit(latency_ns: u64) {
@@ -71,6 +78,9 @@ pub fn record_vmexit(latency_ns: u64) {
         METRICS_PAGE.0.numa_misses = NUMA_MISSES.load(Ordering::Relaxed);
         METRICS_PAGE.0.max_wcet_ns = MAX_WCET_NS.load(Ordering::Relaxed);
         METRICS_PAGE.0.max_irq_latency_ns = MAX_IRQ_LATENCY_NS.load(Ordering::Relaxed);
+        let cold_cnt = TOTAL_COLD_STARTS.load(Ordering::Relaxed);
+        METRICS_PAGE.0.avg_cold_start_ns = if cold_cnt == 0 {0} else { TOTAL_COLD_START_NS.load(Ordering::Relaxed)/cold_cnt};
+        METRICS_PAGE.0.max_cold_start_ns = MAX_COLD_START_NS.load(Ordering::Relaxed);
     }
 }
 
@@ -103,6 +113,8 @@ pub fn collect() -> PerformanceMetrics {
         numa_misses: NUMA_MISSES.load(Ordering::Relaxed),
         max_wcet_ns: MAX_WCET_NS.load(Ordering::Relaxed),
         max_irq_latency_ns: MAX_IRQ_LATENCY_NS.load(Ordering::Relaxed),
+        avg_cold_start_ns: if TOTAL_COLD_STARTS.load(Ordering::Relaxed)==0 {0} else { TOTAL_COLD_START_NS.load(Ordering::Relaxed)/TOTAL_COLD_STARTS.load(Ordering::Relaxed)},
+        max_cold_start_ns: MAX_COLD_START_NS.load(Ordering::Relaxed),
         timestamp_ns: crate::scheduler::cycles_to_nanoseconds(crate::scheduler::get_cycle_counter()),
     }
 }
@@ -136,6 +148,23 @@ pub fn record_wcet(ns: u64) {
             }
             Err(cur) => prev = cur,
         }
+    }
+}
+
+#[inline]
+pub fn record_cold_start(ns: u64) {
+    TOTAL_COLD_STARTS.fetch_add(1, Ordering::Relaxed);
+    TOTAL_COLD_START_NS.fetch_add(ns, Ordering::Relaxed);
+    // update max
+    let mut prev = MAX_COLD_START_NS.load(Ordering::Relaxed);
+    while ns > prev {
+        match MAX_COLD_START_NS.compare_exchange(prev, ns, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => break,
+            Err(cur) => prev = cur,
+        }
+    }
+    if ns > 1_000_000 { // >1 ms threshold
+        security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: 0, wcet_ns: Some(ns) });
     }
 }
 

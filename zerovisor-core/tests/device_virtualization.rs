@@ -1,21 +1,11 @@
-//! Basic device virtualization smoke tests
+#![cfg(test)]
+//! Device virtualization integration test – ensures virtio-net VF assignment succeeds.
 
-extern crate std;
-use zerovisor_hal::gpu::{GpuVirtualization, GpuConfig, GpuVirtFeatures};
-use zerovisor_hal::storage::{StorageVirtualization, StorageConfig, StorageVirtFeatures};
-
-#[test]
-fn gpu_device_enumeration() {
-    if let Ok(engine) = zerovisor_hal::arch::x86_64::gpu::SrIovGpuEngine::init() {
-        let list = engine.list_devices();
-        assert!(!list.is_empty(), "GPU devices should be detected");
-    }
-}
+use zerovisor_core::{cni, nic_manager};
 
 #[test]
-fn storage_device_enumeration() {
-    if zerovisor_hal::arch::x86_64::storage::NvmeSrioVEngine::is_supported() {
-        let eng = zerovisor_hal::arch::x86_64::storage::NvmeSrioVEngine::init().expect("init storage");
-        assert!(!eng.list_devices().is_empty(), "NVMe devices should be present (stub)");
-    }
+fn virtio_net_assignment() {
+    unsafe { nic_manager::init().unwrap(); }
+    let status = unsafe { cni::zerovisor_cni_add(b"eth0\0".as_ptr() as *const i8, 1) };
+    assert_eq!(status as u32, cni::CniStatus::Success as u32);
 } 

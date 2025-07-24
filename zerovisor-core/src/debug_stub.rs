@@ -37,6 +37,9 @@ static BREAKPOINTS: Mutex<[Option<Breakpoint>; MAX_BP]> = Mutex::new([None; MAX_
 
 /// Global stub instance (single-threaded environment)
 static mut DEBUG_STUB: Option<DebugStub<'static>> = None;
+// Current selected thread id (GDB uses 1-based ids by default). Zerovisor maps each VCPU to a
+// thread id equal to its handle value. 0 means "all threads".
+static SELECTED_THREAD: Mutex<u32> = Mutex::new(0);
 
 pub struct DebugStub<'a> {
     io: &'a dyn ByteIo,
@@ -97,33 +100,121 @@ fn hex_to_byte(c1: u8, c2: u8) -> u8 { (hex_val(c1) << 4) | hex_val(c2) }
 // ---------------------------------------------------------------------------
 
 fn process_packet(pkt: &str) -> String {
-    if pkt.starts_with("qSupported") { return String::from(""); }
-    if pkt == "?" { return String::from("S05"); } // dummy signal 5
+    if pkt.starts_with("qSupported") { return "PacketSize=4000".into(); }
 
-    // Read registers
-    if pkt == "g" { return String::from("00000000"); }
+    // Stop reply – return SIGTRAP on initial attach
+    if pkt == "?" { return "S05".into(); }
 
-    // Continue / single-step
-    if pkt == "c" || pkt.starts_with("c") { return String::from("OK"); }
-    if pkt == "s" { return String::from("OK"); }
+    // Read registers – return 16 × 64-bit GPRs as zeroes (placeholder)
+    if pkt == "g" {
+        return encode_regs();
+    }
 
-    // Breakpoint set/clear: Z0 / z0
+    // Write registers – accept but ignore content
+    if pkt.starts_with("G") { return "OK".into(); }
+
+    // Continue / single-step acknowledgements
+    if pkt == "c" || pkt.starts_with("c") { return "OK".into(); }
+    if pkt == "s" { return "OK".into(); }
+
+    // Breakpoint set/clear: Z0 / z0 (software breakpoint)
     if pkt.starts_with("Z0,") {
         if let Some(addr) = parse_hex_u64(&pkt[3..]) { add_breakpoint(addr); }
-        return String::from("OK");
+        return "OK".into();
     }
     if pkt.starts_with("z0,") {
         if let Some(addr) = parse_hex_u64(&pkt[3..]) { remove_breakpoint(addr); }
-        return String::from("OK");
+        return "OK".into();
     }
 
     // Memory read: mADDR,LEN
     if pkt.starts_with("m") {
-        return String::from("E01"); // not implemented
+        if let Some(comma) = pkt.find(',') {
+            let addr_str = &pkt[1..comma];
+            let len_str  = &pkt[comma + 1..];
+            if let (Ok(addr), Ok(len)) = (u64::from_str_radix(addr_str, 16), usize::from_str_radix(len_str, 16)) {
+                unsafe {
+                    let slice = core::slice::from_raw_parts(addr as *const u8, len);
+                    return hex_encode(slice);
+                }
+            }
+        }
+        return "E01".into();
     }
 
-    // Default
+    // Memory write: MADDR,LEN:DATA
+    if pkt.starts_with("M") {
+        if let Some(colon) = pkt.find(':') {
+            let header = &pkt[1..colon];
+            if let Some(comma) = header.find(',') {
+                let addr_str = &header[..comma];
+                let len_str = &header[comma + 1..];
+                if let (Ok(addr), Ok(len)) = (u64::from_str_radix(addr_str, 16), usize::from_str_radix(len_str, 16)) {
+                    let data_str = &pkt[colon + 1..];
+                    let bytes = hex_decode(data_str);
+                    if bytes.len() == len {
+                        unsafe {
+                            let dst = core::slice::from_raw_parts_mut(addr as *mut u8, len);
+                            dst.copy_from_slice(&bytes);
+                            return "OK".into();
+                        }
+                    }
+                }
+            }
+        }
+        return "E02".into();
+    }
+
+    // Switch active thread (Hc thread-id / Hg thread-id). Only acknowledge selection.
+    if pkt.starts_with("Hc") || pkt.starts_with("Hg") {
+        if let Ok(tid) = u32::from_str_radix(&pkt[2..], 16) {
+            *SELECTED_THREAD.lock() = tid;
+        }
+        return "OK".into();
+    }
+
+    // Thread list – single chunk (no pagination)
+    if pkt == "qfThreadInfo" {
+        // For now expose one dummy thread id 1; real implementation will iterate VCPUs.
+        return "m1".into();
+    }
+    if pkt == "qsThreadInfo" { return "l".into(); }
+
+    // Thread alive check (Ttid)
+    if pkt.starts_with("T") {
+        return "OK".into();
+    }
+
+    // Query attached flag
+    if pkt.starts_with("qAttached") { return "1".into(); }
+
+    // Default – unsupported
     String::from("")
+}
+
+// Hex helpers --------------------------------------------------------------------
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(HEX[(b >> 4) as usize] as char);
+        out.push(HEX[(b & 0xF) as usize] as char);
+    }
+    out
+}
+
+fn hex_decode(s: &str) -> Vec<u8> {
+    let mut v = Vec::with_capacity(s.len() / 2);
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        let hi = hex_val(bytes[i]);
+        let lo = hex_val(bytes[i + 1]);
+        v.push((hi << 4) | lo);
+        i += 2;
+    }
+    v
 }
 
 fn parse_hex_u64(s: &str) -> Option<u64> {
@@ -138,14 +229,14 @@ fn parse_hex_u64(s: &str) -> Option<u64> {
 // Breakpoint management
 // ---------------------------------------------------------------------------
 
-fn add_breakpoint(addr: u64) {
+pub fn add_breakpoint(addr: u64) {
     let mut bps = BREAKPOINTS.lock();
     for slot in bps.iter_mut() {
         if slot.is_none() { *slot = Some(Breakpoint { addr }); return; }
     }
 }
 
-fn remove_breakpoint(addr: u64) {
+pub fn remove_breakpoint(addr: u64) {
     let mut bps = BREAKPOINTS.lock();
     for slot in bps.iter_mut() {
         if let Some(bp) = slot { if bp.addr == addr { *slot = None; return; } }
@@ -180,4 +271,13 @@ pub fn get_trace_snapshot(out: &mut [u64]) -> usize {
         if out_idx < out.len() { out[out_idx] = buf[j]; out_idx += 1; }
     }
     out_idx
+} 
+
+fn encode_regs() -> String {
+    // Provide a realistic register dump for x86_64 guests. The hypervisor core will need to fill
+    // actual values; until then we return zeroes to satisfy GDB protocol.
+    const REG_COUNT: usize = 27; // 16 GPR + RIP + RFLAGS + segment + misc
+    let mut s = String::with_capacity(REG_COUNT * 16);
+    for _ in 0..REG_COUNT { s.push_str("0000000000000000"); }
+    s
 } 

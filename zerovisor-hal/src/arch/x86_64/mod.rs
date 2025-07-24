@@ -5,6 +5,7 @@ pub mod cpu;
 pub mod gpu;
 pub mod pci;
 pub mod vmx;
+pub mod svm;
 pub mod vmexit_fast;
 pub mod accelerator;
 pub mod nic;

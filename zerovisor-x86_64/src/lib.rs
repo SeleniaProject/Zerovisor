@@ -46,6 +46,7 @@ pub enum X86Error {
     InvalidCpuid,
     MemoryError,
     InterruptError,
+    MemoryInitFailed,
 }
 
 impl From<X86Error> for HalError {

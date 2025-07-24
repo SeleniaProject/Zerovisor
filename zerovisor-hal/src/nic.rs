@@ -33,6 +33,8 @@ pub struct RdmaCompletion {
     pub wr_id: u64,
     pub status: Result<(), NicError>,
     pub bytes: u32,
+    pub local_va: u64,
+    pub remote_qp: u32,
 }
 
 /// Trait representing a high-performance RDMA capable NIC.

@@ -9,7 +9,51 @@
 //! Stage-2 page-table managers may simply rely on the provided default methods
 //! until proper tracking is implemented.
 
-#![allow(dead_code)]
+extern crate alloc;
+use alloc::collections::BTreeSet;
+use spin::Mutex;
+
+/// Global dirty bitmap per-VM (keyed by VM handle).
+static DIRTY_MAP: Mutex<BTreeSet<u64>> = Mutex::new(BTreeSet::new());
+
+/// Public API called from Stage-2 fault handler to record a dirty page.
+pub fn mark_dirty(gpa: u64) {
+    let page = gpa & !0xFFFu64;
+    DIRTY_MAP.lock().insert(page);
+}
+
+/// Software tracker that consults global bitmap.
+pub struct SoftDirtyTracker;
+
+impl DirtyPageTracker for SoftDirtyTracker {
+    fn collect_dirty_ranges(&mut self, out: &mut [DirtyRange]) -> usize {
+        let mut map = DIRTY_MAP.lock();
+        if map.is_empty() { return 0; }
+
+        let mut count = 0;
+        let mut iter = map.iter().copied();
+        if let Some(mut cur_start) = iter.next() {
+            let mut cur_pages = 1u64;
+            let mut prev = cur_start;
+            for addr in iter {
+                if addr == prev + 0x1000 {
+                    cur_pages += 1;
+                } else {
+                    if count < out.len() { out[count] = DirtyRange { gpa_start: cur_start, pages: cur_pages }; }
+                    count += 1;
+                    cur_start = addr; cur_pages = 1;
+                }
+                prev = addr;
+            }
+            if count < out.len() { out[count] = DirtyRange { gpa_start: cur_start, pages: cur_pages }; }
+            count += 1;
+        }
+        map.clear();
+        count.min(out.len())
+    }
+}
+
+#[allow(dead_code)]
 
 /// A single dirty page range (start GPA and page count).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -18,6 +18,7 @@ use core::ffi::c_char;
 
 use crate::api::{create_vm, start_vm, stop_vm, destroy_vm};
 use crate::log;
+use crate::kube_runtime;
 
 /// C ABI compatible response codes.
 #[repr(C)]
@@ -37,35 +38,69 @@ unsafe fn cstr(ptr: *const c_char) -> &'static str {
 pub unsafe extern "C" fn zerovisor_cri_create_pod_sandbox(pod_uid: *const c_char) -> CriStatus {
     let uid = cstr(pod_uid);
     log!("[CRI] create_pod_sandbox {}", uid);
-    // For simplicity we allocate a VM per pod.
-    let cfg = crate::api::VmConfig::default();
-    match create_vm(cfg) { Ok(_) => CriStatus::Success, Err(_) => CriStatus::Failure }
+    // Create PodSandbox via kube_runtime
+    let runtime = kube_runtime::global();
+    let pod_cfg = kube_runtime::PodConfig { name: uid.into(), namespace: "default".into() };
+    match runtime.create_pod(pod_cfg) { Ok(_) => CriStatus::Success, Err(_) => CriStatus::Failure }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn zerovisor_cri_create_container(container_id: *const c_char) -> CriStatus {
-    log!("[CRI] create_container {}", cstr(container_id));
-    CriStatus::Success
+    let cid = cstr(container_id);
+    let runtime = kube_runtime::global();
+    // Here we pass dummy config; real shim will encode JSON.
+    let cfg = kube_runtime::ContainerConfig { name: cid.into(), image: "scratch".into(), cmd: Vec::new() };
+    match runtime.create_container(&"default-foo".into(), cfg) { Ok(_) => CriStatus::Success, Err(_) => CriStatus::Failure }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn zerovisor_cri_start_container(container_id: *const c_char) -> CriStatus {
     log!("[CRI] start_container {}", cstr(container_id));
-    // Placeholder: map to micro-VM start.
-    let _ = start_vm(0); // VM id 0 stub
-    CriStatus::Success
+    let runtime = kube_runtime::global();
+    match runtime.start_container(&cstr(container_id).into()) { Ok(_) => CriStatus::Success, Err(_) => CriStatus::Failure }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn zerovisor_cri_stop_container(container_id: *const c_char) -> CriStatus {
     log!("[CRI] stop_container {}", cstr(container_id));
-    let _ = stop_vm(0);
-    CriStatus::Success
+    let runtime = kube_runtime::global();
+    match runtime.stop_container(&cstr(container_id).into()) { Ok(_) => CriStatus::Success, Err(_) => CriStatus::Failure }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn zerovisor_cri_remove_container(container_id: *const c_char) -> CriStatus {
     log!("[CRI] remove_container {}", cstr(container_id));
-    let _ = destroy_vm(0);
-    CriStatus::Success
+    let runtime = kube_runtime::global();
+    match runtime.remove_container(&cstr(container_id).into()) { Ok(_) => CriStatus::Success, Err(_) => CriStatus::Failure }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn zerovisor_cri_container_stats(container_id: *const c_char, cpu_usage_ns: *mut u64, mem_bytes: *mut u64, uptime_ns: *mut u64) -> CriStatus {
+    let runtime = kube_runtime::global();
+    match runtime.container_stats(&cstr(container_id).into()) {
+        Ok(stats) => {
+            if !cpu_usage_ns.is_null() { *cpu_usage_ns = stats.cpu_usage_ns; }
+            if !mem_bytes.is_null() { *mem_bytes = stats.mem_usage_bytes; }
+            if !uptime_ns.is_null() { *uptime_ns = stats.uptime.as_nanos() as u64; }
+            CriStatus::Success
+        }
+        Err(_) => CriStatus::Failure
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn zerovisor_cri_container_logs(container_id: *const c_char, last_n: u32, buf: *mut *const u8, len: *mut usize) -> CriStatus {
+    let runtime = kube_runtime::global();
+    match runtime.container_logs(&cstr(container_id).into(), last_n as usize) {
+        Ok(vec) => {
+            // Concatenate lines with \n for simplicity
+            let joined = vec.join("\n");
+            let slice = joined.as_bytes();
+            *buf = slice.as_ptr();
+            *len = slice.len();
+            core::mem::forget(joined); // leak to caller; they must copy
+            CriStatus::Success
+        }
+        Err(_) => CriStatus::Failure
+    }
 } 

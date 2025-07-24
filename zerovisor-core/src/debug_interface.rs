@@ -40,4 +40,26 @@ static UART: UartIo = UartIo;
 
 pub fn init() { DebugStub::init(&UART); }
 
-pub fn poll() { DebugStub::poll(); } 
+pub fn poll() { DebugStub::poll(); }
+
+/// Program a software breakpoint at virtual address `addr`.
+pub fn set_breakpoint(addr: u64) { crate::debug_stub::add_breakpoint(addr); }
+
+/// Request single-step execution via GDB stub.
+pub fn single_step() {
+    // Send a GDB 's' packet over UART I/O.
+    // For simplicity we craft minimum packet directly.
+    const CMD: &str = "s";
+    unsafe {
+        if let Some(stub) = crate::debug_stub::DEBUG_STUB.as_mut() {
+            stub.io.write_byte(b'$');
+            for b in CMD.as_bytes() { stub.io.write_byte(*b); }
+            stub.io.write_byte(b'#');
+            let chk = (CMD.bytes().fold(0u8, |a, v| a.wrapping_add(v)));
+            let hi = ((chk >> 4) & 0xF) as u8; let lo = (chk & 0xF) as u8;
+            let nib = |n: u8| if n < 10 { b'0' + n } else { b'a' + (n-10) };
+            stub.io.write_byte(nib(hi));
+            stub.io.write_byte(nib(lo));
+        }
+    }
+} 

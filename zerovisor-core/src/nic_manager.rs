@@ -20,7 +20,7 @@ use crate::security::{self, SecurityEvent};
 use crate::ZerovisorError;
 
 #[cfg(target_arch = "x86_64")]
-use zerovisor_hal::arch::x86_64::InfinibandNic as ArchNic;
+use zerovisor_hal::arch::x86_64::{global as hal_nic_global, SriovNicEngine};
 
 /// Handle type alias for clarity (maps to work-queue context in real impl).
 pub type NicHandle = u32;
@@ -31,13 +31,17 @@ pub struct NicManager<N: HpcNic + Send + Sync + 'static> {
     next_handle: Mutex<NicHandle>,
 }
 
-static mut NIC_MANAGER: Option<NicManager<ArchNic>> = None;
+static mut NIC_MANAGER: Option<NicManager<&'static dyn HpcNic>> = None;
 
 pub fn init() -> Result<(), ZerovisorError> {
     if unsafe { NIC_MANAGER.is_some() } { return Ok(()); }
-    let nic = ArchNic::new();
-    unsafe {
-        NIC_MANAGER = Some(NicManager { nic, allocs: Mutex::new(BTreeMap::new()), next_handle: Mutex::new(1) });
+    #[cfg(target_arch = "x86_64")]
+    {
+        zerovisor_hal::arch::x86_64::init_global();
+        let nic = hal_nic_global().ok_or(ZerovisorError::HardwareNotSupported)?;
+        unsafe {
+            NIC_MANAGER = Some(NicManager { nic, allocs: Mutex::new(BTreeMap::new()), next_handle: Mutex::new(1) });
+        }
     }
     Ok(())
 }

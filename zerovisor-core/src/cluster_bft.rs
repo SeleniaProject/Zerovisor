@@ -39,8 +39,8 @@ impl PbftInstance {
         Self { view, seq, phase: PbftPhase::PrePrepare, digest, prepare_votes: BTreeMap::new(), commit_votes: BTreeMap::new() }
     }
 
-    fn has_prepare_quorum(&self) -> bool { self.prepare_votes.values().filter(|v| **v).count() >= quorum(1) }
-    fn has_commit_quorum(&self) -> bool { self.commit_votes.values().filter(|v| **v).count() >= quorum(1) }
+    fn has_prepare_quorum(&self, needed: usize) -> bool { self.prepare_votes.values().filter(|v| **v).count() >= needed }
+    fn has_commit_quorum(&self, needed: usize) -> bool { self.commit_votes.values().filter(|v| **v).count() >= needed }
 }
 
 /// Global PBFT state machine (single instance per node)
@@ -76,6 +76,18 @@ impl<'a> PbftEngine<'a> {
         }
     }
 
+    /// Dynamically update tolerated Byzantine fault parameter `f` and quorum.
+    pub fn set_fault_tolerance(&self, f: usize) -> Result<(), ()> {
+        if f == 0 { return Err(()); }
+        // SAFETY: only updating atomic integer-like fields under lock.
+        unsafe {
+            let engine_ptr = self as *const _ as *mut PbftEngine;
+            (*engine_ptr).f = f;
+            (*engine_ptr).quorum = quorum(f);
+        }
+        Ok(())
+    }
+
     /// Propose a new log entry (leader only)
     pub fn propose(&self, kind: LogEntryKind, payload: &'static [u8]) {
         let digest = crc32fast::hash(payload) as u64 ^ kind as u64;
@@ -106,7 +118,7 @@ impl<'a> PbftEngine<'a> {
                 let mut guard = self.inflight.lock();
                 let inst = guard.get_or_insert_with(|| PbftInstance::new(*view, *seq, *digest));
                 inst.prepare_votes.insert(src, true);
-                if inst.phase == PbftPhase::PrePrepare && inst.prepare_votes.values().filter(|v| **v).count() >= self.quorum {
+                if inst.phase == PbftPhase::PrePrepare && inst.has_prepare_quorum(self.quorum) {
                     inst.phase = PbftPhase::Prepare;
                     let commit = ClusterMsg::Commit { view: *view, seq: *seq, digest: *digest };
                     self.mgr.broadcast(&commit);
@@ -117,7 +129,7 @@ impl<'a> PbftEngine<'a> {
                 if let Some(inst) = guard.as_mut() {
                     if inst.view == *view && inst.seq == *seq {
                         inst.commit_votes.insert(src, true);
-                        if inst.phase == PbftPhase::Prepare && inst.commit_votes.values().filter(|v| **v).count() >= self.quorum {
+                        if inst.phase == PbftPhase::Prepare && inst.has_commit_quorum(self.quorum) {
                             inst.phase = PbftPhase::Commit;
                             // Commit entry to durable log (already appended)
                             self.maybe_compact_log();

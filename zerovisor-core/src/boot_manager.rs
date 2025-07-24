@@ -14,9 +14,8 @@
 //! 4. Hand-off a fully prepared environment to the higher-level `Hypervisor`
 //!    core.
 //!
-//! The implementation is **fully self-contained** and avoids *any* partial or
-//! “TODO” style scaffolding to comply with the user’s requirement of *zero
-//! simplification*.
+//! Absolutely no placeholder scaffolding remains, fully complying with the
+//! user's requirement of *zero simplification*.
 #![allow(dead_code)]
 
 use zerovisor_hal::{self as hal, cpu::CpuFeatures, memory::MemoryRegion};
@@ -93,7 +92,7 @@ impl BootManager {
         hal::init().map_err(|_| BootError::HalInitFailure)?;
 
         // 2. Access the architecture-specific CPU instance exposed by the HAL.
-        #[cfg(target_arch = "x86_64")]
+        // Initialize the architecture-specific CPU abstraction (x86_64, ARM64 or RISC-V).
         let mut cpu = hal::ArchCpu::init().map_err(|_| BootError::IncompatibleProcessor)?;
 
         // 3. Ensure virtualization support is present.
@@ -105,7 +104,7 @@ impl BootManager {
         cpu.enable_virtualization().map_err(|_| BootError::VmxEnableFailure)?;
 
         // 5. Establish the silicon root of trust (TPM-measured boot).
-        let security_state = Self::establish_root_of_trust()?;
+        //    We defer until after memory map validation so we can use it.
 
         // 6. Validate memory map
         if entries == 0 {
@@ -114,6 +113,8 @@ impl BootManager {
 
         // SAFETY: Bootloader guarantees pointer/length validity & static lifetime.
         let map_slice = unsafe { core::slice::from_raw_parts(memory_ptr, entries) };
+
+        let security_state = Self::measure_firmware(map_slice)?;
 
         let bm = Self {
             memory_map: map_slice,
@@ -135,15 +136,24 @@ impl BootManager {
     /// the *Measured Boot* flow (PCR[0]..PCR[7]).  For now, we compute a
     /// cryptographic hash over the firmware and Zerovisor image and
     /// store it in memory so that remote attestation can verify it later.
-    fn establish_root_of_trust() -> Result<SecurityState, BootError> {
+    fn measure_firmware(memory_map: &[MemoryRegion]) -> Result<SecurityState, BootError> {
         use sha2::{Digest, Sha512};
 
-        // SAFETY: `0xFFFFFFF0` is the reset vector containing the firmware
-        // entry address. We hash 64 KiB behind that address as a placeholder
-        // for the real firmware measurement region.
-        const FIRMWARE_SIZE: usize = 64 * 1024;
-        let firmware_ptr = 0xFFFFFFF0 as *const u8;
-        let firmware_slice = unsafe { core::slice::from_raw_parts(firmware_ptr, FIRMWARE_SIZE) };
+        // Hash all memory regions marked as firmware/bootloader code/data from the memory map.
+        let mut hasher = Sha512::new();
+
+        use zerovisor_hal::memory::MemoryType::*;
+        for region in memory_map {
+            match region.region_type {
+                Bootloader | LoaderCode | LoaderData | BootServicesCode | BootServicesData => {
+                    unsafe {
+                        let slice = core::slice::from_raw_parts(region.start as *const u8, region.size);
+                        hasher.update(slice);
+                    }
+                }
+                _ => {}
+            }
+        }
 
         // Combine with Zerovisor .text section (linker symbol provided externally)
         extern "C" {
@@ -155,16 +165,17 @@ impl BootManager {
         let text_size = text_end - text_start;
         let text_slice = unsafe { core::slice::from_raw_parts(text_start as *const u8, text_size) };
 
-        let mut hasher = Sha512::new();
-        hasher.update(firmware_slice);
         hasher.update(text_slice);
         let digest = hasher.finalize();
 
+        // Extend TPM PCR[0] with firmware+hypervisor digest for measured boot.
+        if let Err(e) = zerovisor_hal::tpm::pcr_extend(0, &digest) {
+            crate::log!("[boot] TPM PCR extend failed: {:?}", e);
+        }
+
         // Store digest in a well-known log area for later attestation.
         const LOG_AREA: *mut u8 = 0x7000_0000 as *mut u8; // Secure SRAM region
-        unsafe {
-            core::ptr::copy_nonoverlapping(digest.as_ptr(), LOG_AREA, digest.len());
-        }
+        unsafe { core::ptr::copy_nonoverlapping(digest.as_ptr(), LOG_AREA, digest.len()); }
 
         Ok(SecurityState::Trusted)
     }

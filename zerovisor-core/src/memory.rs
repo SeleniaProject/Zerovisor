@@ -239,9 +239,14 @@ impl PhysicalMemoryManager {
     fn init_memory_encryption(&self) -> Result<(), MemoryError> {
         let mut encryption = self.encryption_engine.lock();
         
-        // Initialize quantum-resistant encryption key
-        // In a real implementation, this would use hardware RNG
-        encryption.key_table = [0x42; 32]; // Placeholder key
+        // Generate quantum-resistant key material by hashing freshly generated Kyber keypair.
+        use crate::crypto::{kyber_generate, kyber_encapsulate};
+        let kyber = kyber_generate();
+        let ctxt = kyber_encapsulate(&kyber.public);
+        let mut hasher = Sha256::new();
+        hasher.update(&ctxt.shared_key);
+        let digest = hasher.finalize();
+        encryption.key_table.copy_from_slice(&digest);
         encryption.enabled = true;
         
         Ok(())
@@ -575,6 +580,31 @@ pub fn allocate_numa_local(count: usize, node_id: u32) -> Result<PhysicalAddress
         Some(manager) => manager.allocate_numa_local(count, node_id),
         None => Err(MemoryError::NotInitialized),
     }
+}
+
+/// Migrate a range of pages to the specified NUMA node and return new physical address.
+pub fn migrate_pages(addr: PhysicalAddress, count: usize, dest_node: u32) -> Result<PhysicalAddress, MemoryError> {
+    let mgr = get_memory_manager()?;
+    // 1. Allocate new pages on destination node.
+    let new_addr = mgr.allocate_numa_local(count, dest_node)?;
+    // 2. Copy memory contents page-by-page.
+    let page_sz = {
+        let alloc_guard = mgr.allocator.lock();
+        alloc_guard.page_size
+    };
+    let total_bytes = count * page_sz;
+    unsafe {
+        core::ptr::copy_nonoverlapping(addr as *const u8, new_addr as *mut u8, total_bytes);
+    }
+    // 3. Free old pages.
+    mgr.free_pages(addr, count)?;
+    Ok(new_addr)
+}
+
+/// Set memory affinity by migrating pages if current location differs.
+pub fn set_affinity(addr: PhysicalAddress, count: usize, node_id: u32) -> Result<(), MemoryError> {
+    let _ = migrate_pages(addr, count, node_id)?;
+    Ok(())
 }
 
 /// Get memory statistics

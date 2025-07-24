@@ -39,6 +39,8 @@ pub enum AccelError {
     AlreadyAssigned,
     InvalidVm,
     HardwareFailure,
+    InvalidOperation,
+    OutOfMemory,
 }
 
 /// Virtualization interface to be implemented by architecture-specific back-ends.

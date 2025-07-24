@@ -10,19 +10,31 @@ pub struct X86Cpu {
     features: CpuFeatures,
     cpu_id: u32,
     vmx_enabled: bool,
+    svm_enabled: bool,
+    virtualization_type: VirtualizationType,
+}
+
+/// Supported virtualization technologies
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VirtualizationType {
+    None,
+    Vmx,
+    Svm,
 }
 
 impl Cpu for X86Cpu {
     type Error = X86Error;
     
     fn init() -> Result<Self, Self::Error> {
-        let features = detect_cpu_features();
+        let (features, virt_type) = detect_cpu_features();
         let cpu_id = get_cpu_id();
         
         Ok(Self {
             features,
             cpu_id,
             vmx_enabled: false,
+            svm_enabled: false,
+            virtualization_type: virt_type,
         })
     }
     
@@ -32,31 +44,65 @@ impl Cpu for X86Cpu {
     
     fn enable_virtualization(&mut self) -> Result<(), Self::Error> {
         if !self.has_virtualization_support() {
-            return Err(X86Error::VmxNotSupported);
+            match self.virtualization_type {
+                VirtualizationType::Vmx => return Err(X86Error::VmxNotSupported),
+                VirtualizationType::Svm => return Err(X86Error::SvmNotSupported),
+                VirtualizationType::None => return Err(X86Error::UnsupportedCpu),
+            }
         }
         
-        unsafe {
-            // Enable VMX in CR4
-            let mut cr4 = Cr4::read();
-            cr4.insert(Cr4::VIRTUAL_MACHINE_EXTENSIONS);
-            Cr4::write(cr4);
-            
-            // Set VMXE bit in IA32_FEATURE_CONTROL MSR if needed
-            enable_vmx_in_feature_control()?;
+        match self.virtualization_type {
+            VirtualizationType::Vmx => {
+                unsafe {
+                    // Enable VMX in CR4
+                    let mut cr4 = Cr4::read();
+                    cr4.insert(Cr4::VIRTUAL_MACHINE_EXTENSIONS);
+                    Cr4::write(cr4);
+                    
+                    // Set VMXE bit in IA32_FEATURE_CONTROL MSR if needed
+                    enable_vmx_in_feature_control()?;
+                }
+                self.vmx_enabled = true;
+            },
+            VirtualizationType::Svm => {
+                unsafe {
+                    // Enable SVM in EFER MSR
+                    enable_svm_in_efer()?;
+                }
+                self.svm_enabled = true;
+            },
+            VirtualizationType::None => {
+                return Err(X86Error::UnsupportedCpu);
+            }
         }
         
-        self.vmx_enabled = true;
         Ok(())
     }
     
     fn disable_virtualization(&mut self) -> Result<(), Self::Error> {
-        if self.vmx_enabled {
-            unsafe {
-                let mut cr4 = Cr4::read();
-                cr4.remove(Cr4::VIRTUAL_MACHINE_EXTENSIONS);
-                Cr4::write(cr4);
+        match self.virtualization_type {
+            VirtualizationType::Vmx => {
+                if self.vmx_enabled {
+                    unsafe {
+                        let mut cr4 = Cr4::read();
+                        cr4.remove(Cr4::VIRTUAL_MACHINE_EXTENSIONS);
+                        Cr4::write(cr4);
+                    }
+                    self.vmx_enabled = false;
+                }
+            },
+            VirtualizationType::Svm => {
+                if self.svm_enabled {
+                    unsafe {
+                        // Disable SVM in EFER MSR
+                        disable_svm_in_efer()?;
+                    }
+                    self.svm_enabled = false;
+                }
+            },
+            VirtualizationType::None => {
+                // Nothing to disable
             }
-            self.vmx_enabled = false;
         }
         Ok(())
     }
@@ -142,7 +188,8 @@ impl Cpu for X86Cpu {
 
 /// Check if virtualization is supported
 pub fn has_virtualization_support() -> bool {
-    detect_cpu_features().contains(CpuFeatures::VIRTUALIZATION)
+    let (features, _) = detect_cpu_features();
+    features.contains(CpuFeatures::VIRTUALIZATION)
 }
 
 /// Initialize x86_64 CPU
@@ -151,17 +198,29 @@ pub fn init() -> Result<(), crate::X86Error> {
     Ok(())
 }
 
-/// Detect CPU features
-fn detect_cpu_features() -> CpuFeatures {
+/// Detect CPU features and virtualization type
+fn detect_cpu_features() -> (CpuFeatures, VirtualizationType) {
     let mut features = CpuFeatures::empty();
+    let mut virt_type = VirtualizationType::None;
     
     // Check CPUID for virtualization support
     let cpuid = raw_cpuid::CpuId::new();
     
+    // Check for Intel VMX support
     if let Some(feature_info) = cpuid.get_feature_info() {
         if feature_info.has_vmx() {
             features |= CpuFeatures::VIRTUALIZATION;
             features |= CpuFeatures::HARDWARE_ASSIST;
+            virt_type = VirtualizationType::Vmx;
+        }
+    }
+    
+    // Check for AMD SVM support
+    if let Some(extended_info) = cpuid.get_extended_function_info() {
+        if extended_info.has_svm() {
+            features |= CpuFeatures::VIRTUALIZATION;
+            features |= CpuFeatures::HARDWARE_ASSIST;
+            virt_type = VirtualizationType::Svm;
         }
     }
     
@@ -175,7 +234,7 @@ fn detect_cpu_features() -> CpuFeatures {
     features |= CpuFeatures::CACHE_COHERENCY;
     features |= CpuFeatures::PRECISE_TIMERS;
     
-    features
+    (features, virt_type)
 }
 
 /// Get CPU ID
@@ -238,4 +297,52 @@ fn save_descriptor_tables() -> [RegisterValue; 4] {
 
 unsafe fn restore_descriptor_tables(_desc_tables: &[RegisterValue; 4]) {
     // Would restore descriptor tables in real implementation
+}/// En
+able SVM in EFER MSR
+unsafe fn enable_svm_in_efer() -> Result<(), X86Error> {
+    const IA32_EFER: u32 = 0xC0000080;
+    const EFER_SVME: u64 = 1 << 12;
+    
+    let msr = Msr::new(IA32_EFER);
+    let mut value = msr.read();
+    
+    if (value & EFER_SVME) == 0 {
+        value |= EFER_SVME;
+        msr.write(value);
+    }
+    
+    Ok(())
+}
+
+/// Disable SVM in EFER MSR
+unsafe fn disable_svm_in_efer() -> Result<(), X86Error> {
+    const IA32_EFER: u32 = 0xC0000080;
+    const EFER_SVME: u64 = 1 << 12;
+    
+    let msr = Msr::new(IA32_EFER);
+    let mut value = msr.read();
+    
+    if (value & EFER_SVME) != 0 {
+        value &= !EFER_SVME;
+        msr.write(value);
+    }
+    
+    Ok(())
+}
+
+impl X86Cpu {
+    /// Get the virtualization type supported by this CPU
+    pub fn virtualization_type(&self) -> VirtualizationType {
+        self.virtualization_type
+    }
+    
+    /// Check if VMX is enabled
+    pub fn is_vmx_enabled(&self) -> bool {
+        self.vmx_enabled
+    }
+    
+    /// Check if SVM is enabled
+    pub fn is_svm_enabled(&self) -> bool {
+        self.svm_enabled
+    }
 }

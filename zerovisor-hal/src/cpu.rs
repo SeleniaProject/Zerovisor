@@ -98,26 +98,73 @@ pub enum CpuRegister {
 /// CPU state for context switching
 #[derive(Debug, Clone)]
 pub struct CpuState {
-    /// General purpose registers
-    pub general_registers: [RegisterValue; 32],
+    // Control registers
+    pub cr0: u64,
+    pub cr2: u64,
+    pub cr3: u64,
+    pub cr4: u64,
+    pub dr7: u64,
     
-    /// Control registers
-    pub control_registers: [RegisterValue; 16],
+    // General purpose registers
+    pub rax: u64,
+    pub rbx: u64,
+    pub rcx: u64,
+    pub rdx: u64,
+    pub rsi: u64,
+    pub rdi: u64,
+    pub rbp: u64,
+    pub rsp: u64,
+    pub r8: u64,
+    pub r9: u64,
+    pub r10: u64,
+    pub r11: u64,
+    pub r12: u64,
+    pub r13: u64,
+    pub r14: u64,
+    pub r15: u64,
     
-    /// System registers
-    pub system_registers: [RegisterValue; 64],
+    // Instruction pointer and flags
+    pub rip: u64,
+    pub rflags: u64,
     
-    /// Program counter / instruction pointer
-    pub program_counter: VirtualAddress,
+    // Segment registers
+    pub es: SegmentRegister,
+    pub cs: SegmentRegister,
+    pub ss: SegmentRegister,
+    pub ds: SegmentRegister,
+    pub fs: SegmentRegister,
+    pub gs: SegmentRegister,
     
-    /// Stack pointer
-    pub stack_pointer: VirtualAddress,
+    // System registers
+    pub gdtr: DescriptorTableRegister,
+    pub idtr: DescriptorTableRegister,
+    pub tr: SegmentRegister,
+    pub ldtr: SegmentRegister,
     
-    /// Processor flags/status
-    pub flags: RegisterValue,
-    
-    /// Architecture-specific state
-    pub arch_specific: ArchSpecificState,
+    // MSRs
+    pub ia32_debugctl: u64,
+    pub ia32_pat: u64,
+    pub ia32_efer: u64,
+    pub ia32_perf_global_ctrl: u64,
+    pub ia32_sysenter_cs: u64,
+    pub ia32_sysenter_esp: u64,
+    pub ia32_sysenter_eip: u64,
+}
+
+/// Segment register structure
+#[derive(Debug, Clone, Copy)]
+pub struct SegmentRegister {
+    pub selector: u16,
+    pub base: u64,
+    pub limit: u32,
+    pub access_rights: u32,
+}
+
+/// Descriptor table register structure
+#[derive(Debug, Clone, Copy)]
+pub struct DescriptorTableRegister {
+    pub base: u64,
+    pub limit: u16,
 }
 
 /// Architecture-specific CPU state
@@ -143,20 +190,94 @@ pub enum ArchSpecificState {
     },
 }
 
+/// Additional CPU state for legacy compatibility
+#[derive(Debug, Clone)]
+pub struct LegacyCpuState {
+    /// General purpose registers
+    pub general_registers: [RegisterValue; 32],
+    
+    /// Control registers
+    pub control_registers: [RegisterValue; 16],
+    
+    /// System registers
+    pub system_registers: [RegisterValue; 64],
+    
+    /// Program counter / instruction pointer
+    pub program_counter: VirtualAddress,
+    
+    /// Stack pointer
+    pub stack_pointer: VirtualAddress,
+    
+    /// Processor flags/status
+    pub flags: RegisterValue,
+    
+    /// Architecture-specific state
+    pub arch_specific: ArchSpecificState,
+}
+
 impl Default for CpuState {
     fn default() -> Self {
         Self {
-            general_registers: [0; 32],
-            control_registers: [0; 16],
-            system_registers: [0; 64],
-            program_counter: 0,
-            stack_pointer: 0,
-            flags: 0,
-            arch_specific: ArchSpecificState::X86_64 {
-                msr_values: [0; 256],
-                segment_registers: [0; 6],
-                descriptor_tables: [0; 4],
-            },
+            cr0: 0,
+            cr2: 0,
+            cr3: 0,
+            cr4: 0,
+            dr7: 0,
+            rax: 0,
+            rbx: 0,
+            rcx: 0,
+            rdx: 0,
+            rsi: 0,
+            rdi: 0,
+            rbp: 0,
+            rsp: 0,
+            r8: 0,
+            r9: 0,
+            r10: 0,
+            r11: 0,
+            r12: 0,
+            r13: 0,
+            r14: 0,
+            r15: 0,
+            rip: 0,
+            rflags: 0,
+            es: SegmentRegister::default(),
+            cs: SegmentRegister::default(),
+            ss: SegmentRegister::default(),
+            ds: SegmentRegister::default(),
+            fs: SegmentRegister::default(),
+            gs: SegmentRegister::default(),
+            gdtr: DescriptorTableRegister::default(),
+            idtr: DescriptorTableRegister::default(),
+            tr: SegmentRegister::default(),
+            ldtr: SegmentRegister::default(),
+            ia32_debugctl: 0,
+            ia32_pat: 0,
+            ia32_efer: 0,
+            ia32_perf_global_ctrl: 0,
+            ia32_sysenter_cs: 0,
+            ia32_sysenter_esp: 0,
+            ia32_sysenter_eip: 0,
+        }
+    }
+}
+
+impl Default for SegmentRegister {
+    fn default() -> Self {
+        Self {
+            selector: 0,
+            base: 0,
+            limit: 0,
+            access_rights: 0,
+        }
+    }
+}
+
+impl Default for DescriptorTableRegister {
+    fn default() -> Self {
+        Self {
+            base: 0,
+            limit: 0,
         }
     }
 }

@@ -44,7 +44,7 @@ pub fn assign_gpu(vm: VmHandle, cfg: &GpuConfig) -> Result<GpuHandle, GpuError> 
 
     mgr.allocs.lock().entry(vm).or_default().push(handle);
 
-    security::record_event(SecurityEvent::PerfWarning { avg_latency_ns: 0, wcet_ns: None }); // placeholder for audit
+    security::record_event(SecurityEvent::GpuAssignment { vm, device_bdf: encode_bdf(cfg.device), vf_index: cfg.vf_index });
     Ok(handle)
 }
 
@@ -75,6 +75,8 @@ pub fn release_gpu(vm: VmHandle, handle: GpuHandle) -> Result<(), GpuError> {
     if let Some(list) = mgr.allocs.lock().get_mut(&vm) {
         list.retain(|&h| h != handle);
     }
+    // Record release event
+    security::record_event(SecurityEvent::GpuAssignment { vm, device_bdf: 0, vf_index: 0 });
     Ok(())
 }
 
@@ -86,4 +88,6 @@ pub fn list_assigned(vm: VmHandle) -> alloc::vec::Vec<GpuHandle> {
             .and_then(|m| m.allocs.lock().get(&vm).cloned())
             .unwrap_or_default()
     }
-} 
+}
+
+fn encode_bdf(d: zerovisor_hal::gpu::GpuDeviceId) -> u32 { ((d.bus as u32) << 8) | ((d.device as u32) << 3) | d.function as u32 } 

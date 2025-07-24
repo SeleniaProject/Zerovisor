@@ -60,7 +60,15 @@ pub mod homomorphic_mem;
 pub mod storage_manager;
 pub mod nic_manager;
 pub mod cluster_runtime;
+pub mod cluster_hotstuff;
+pub mod distributed_hypervisor;
+pub mod carbon_aware;
+pub mod energy_pue;
+pub mod renewable_api;
+pub mod lattice_kex;
 pub mod kube_cri;
+pub mod cni;
+pub mod csi;
 
 use zerovisor_hal::{HalError, init as hal_init};
 use security::init as security_init;
@@ -114,6 +122,14 @@ pub fn init() -> Result<(), ZerovisorError> {
     // Initialize PBFT/exascale cluster runtime
     cluster_runtime::init(crate::cluster::NodeId(0));
 
+    // Initialize global VM directory for exascale distributed hypervisor
+    distributed_hypervisor::init();
+
+    carbon_aware::init();
+    energy_pue::init();
+    renewable_api::init();
+    lattice_kex::init();
+
     Ok(())
 }
 
@@ -154,6 +170,14 @@ pub fn init_with_memory_map(memory_map: &[zerovisor_hal::memory::MemoryRegion]) 
     {
         ha::init();
     }
+
+    // Initialize global VM directory
+    distributed_hypervisor::init();
+
+    carbon_aware::init();
+    energy_pue::init();
+    renewable_api::init();
+    lattice_kex::init();
 
     Ok(())
 }

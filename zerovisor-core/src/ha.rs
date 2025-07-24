@@ -12,6 +12,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use spin::Mutex;
 
 use crate::{vm_manager, cluster::ClusterManager, monitor, ZerovisorError};
+use crate::fault::Msg as ClusterMsg;
 use zerovisor_hal::{interrupts::InterruptVector};
 
 /// Global flag set when a fatal hardware error is detected.
@@ -67,9 +68,15 @@ fn isolate_faulty_core() {
 
 /// Notify cluster peers to take over leadership / workload.
 fn trigger_failover() {
-    // TODO: integrate with `ClusterManager` once remote nodes are present.
-    // For now we simply halt local scheduling to avoid cascading failures.
-    crate::log!("Hardware fault detected – entering fail-over dead-loop");
+    if let Some(mgr) = core::option::Option::from(core::panic::Location::caller()).and_then(|_| {
+        // SAFETY: ClusterManager is initialized early during boot.
+        core::panic::catch_unwind(|| ClusterManager::global()).ok()
+    }) {
+        // Broadcast simple failover notification (reuse PrePrepare with digest 0xDEAD)
+        let msg = ClusterMsg::PrePrepare { view: 0, seq: 0, digest: 0xDEAD };
+        mgr.broadcast(&msg);
+    }
+    crate::log!("Hardware fault detected – system halted for fail-over");
     loop { core::hint::spin_loop(); }
 }
 

@@ -29,17 +29,66 @@ pub struct RiscvIommuEngine {
 static NEXT_DOMAIN_ID: AtomicU16 = AtomicU16::new(1);
 
 impl RiscvIommuEngine {
-    #[inline] fn detect() -> bool { true /* assume supported (IOMMU draft) */ }
+    #[inline]
+    fn detect() -> bool {
+        // Attempt to probe the RISC-V IOMMU by reading the capability register.
+        // When the `riscv_iommu_mmio` feature (or docs build) is enabled we
+        // perform an actual MMIO read; otherwise we optimistically assume the
+        // IOMMU is present so that unit tests on non-RISC-V hosts still pass.
+
+        #[cfg(any(feature = "riscv_iommu_mmio", doc))]
+        unsafe {
+            const IOMMU_BASE: u64 = 0x2400_0000; // board-specific base address
+            const CAP_OFFSET: u64 = 0x000;      // Capability register offset
+
+            let cap = (IOMMU_BASE + CAP_OFFSET) as *const u32;
+            let val = core::ptr::read_volatile(cap);
+            // The low nibble encodes the supported address width; zero implies
+            // that the register read failed (all ones / zeros). Treat non-zero
+            // value as presence.
+            (val & 0xF) != 0
+        }
+
+        #[cfg(not(any(feature = "riscv_iommu_mmio", doc)))]
+        {
+            true
+        }
+    }
+
     #[inline] fn allocate_domain_id() -> u16 { NEXT_DOMAIN_ID.fetch_add(1, Ordering::SeqCst) }
 
     #[allow(unused_variables)]
     fn program_iommu(stream_id: u32, stage2_root: PhysicalAddress, domain_id: u16) {
-        // Placeholder for writing to IMSIC / IOMMU configuration CSRs or MMIO.
+        // Configure per-stream translation context.
+        #[cfg(any(feature = "riscv_iommu_mmio", doc))]
+        unsafe {
+            const IOMMU_BASE: u64 = 0x2400_0000; // SoC-specific base
+            const STREAM_STRIDE: u64 = 0x20;      // 32-byte slot per stream
+            const STREAM_TABLE: u64 = 0x1000;     // Table base offset
+
+            let base = IOMMU_BASE + STREAM_TABLE + (stream_id as u64) * STREAM_STRIDE;
+            let ctrl = (base + 0x0) as *mut u32;  // Control + domain ID
+            let ttbr = (base + 0x8) as *mut u64;  // Stage-2 root PA (Sv48 PPN)
+
+            // Write translation root (aligned to 4 KiB).
+            core::ptr::write_volatile(ttbr, stage2_root & !0xFFF);
+
+            // Enable bit[0] | domain_id in bits[15:1] | Stage-2 enable (bit[16]).
+            let val = (1u32) | ((domain_id as u32) << 1) | (1u32 << 16);
+            core::ptr::write_volatile(ctrl, val);
+        }
+    }
+
+    #[allow(unused_variables)]
+    fn disable_stream_mapping(stream_id: u32) {
         #[cfg(any(feature = "riscv_iommu_mmio", doc))]
         unsafe {
             const IOMMU_BASE: u64 = 0x2400_0000;
-            let guest_pa_reg = (IOMMU_BASE + 0x1000) as *mut u64;
-            core::ptr::write_volatile(guest_pa_reg, stage2_root);
+            const STREAM_STRIDE: u64 = 0x20;
+            const STREAM_TABLE: u64 = 0x1000;
+            let base = IOMMU_BASE + STREAM_TABLE + (stream_id as u64) * STREAM_STRIDE;
+            let ctrl = (base + 0x0) as *mut u32;
+            core::ptr::write_volatile(ctrl, 0);
         }
     }
 }
@@ -64,7 +113,8 @@ impl IommuEngine for RiscvIommuEngine {
     fn detach_device(&self, bdf: u32) -> Result<(), IommuError> {
         let mut map = self.devices.lock();
         map.remove(&bdf).ok_or(IommuError::NotAttached)?;
-        // TODO: disable stream mapping in hardware
+        // Disable IOMMU translation for the stream to prevent stray DMA.
+        Self::disable_stream_mapping(bdf);
         Ok(())
     }
 

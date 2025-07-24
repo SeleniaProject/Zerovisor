@@ -605,76 +605,98 @@ impl VmxEngine {
     /// Helper functions to read current CPU state
     unsafe fn read_cr0() -> u64 {
         let cr0: u64;
-        core::arch::asm!("mov {}, cr0", out(reg) cr0);
+        unsafe {
+            core::arch::asm!("mov {}, cr0", out(reg) cr0);
+        }
         cr0
     }
     
     unsafe fn read_cr3() -> u64 {
         let cr3: u64;
-        core::arch::asm!("mov {}, cr3", out(reg) cr3);
+        unsafe {
+            core::arch::asm!("mov {}, cr3", out(reg) cr3);
+        }
         cr3
     }
     
     unsafe fn read_cr4() -> u64 {
         let cr4: u64;
-        core::arch::asm!("mov {}, cr4", out(reg) cr4);
+        unsafe {
+            core::arch::asm!("mov {}, cr4", out(reg) cr4);
+        }
         cr4
     }
     
     unsafe fn read_es() -> u16 {
         let es: u16;
-        core::arch::asm!("mov {0:x}, es", out(reg) es);
+        unsafe {
+            core::arch::asm!("mov {0:x}, es", out(reg) es);
+        }
         es
     }
     
     unsafe fn read_cs() -> u16 {
         let cs: u16;
-        core::arch::asm!("mov {0:x}, cs", out(reg) cs);
+        unsafe {
+            core::arch::asm!("mov {0:x}, cs", out(reg) cs);
+        }
         cs
     }
     
     unsafe fn read_ss() -> u16 {
         let ss: u16;
-        core::arch::asm!("mov {0:x}, ss", out(reg) ss);
+        unsafe {
+            core::arch::asm!("mov {0:x}, ss", out(reg) ss);
+        }
         ss
     }
     
     unsafe fn read_ds() -> u16 {
         let ds: u16;
-        core::arch::asm!("mov {0:x}, ds", out(reg) ds);
+        unsafe {
+            core::arch::asm!("mov {0:x}, ds", out(reg) ds);
+        }
         ds
     }
     
     unsafe fn read_fs() -> u16 {
         let fs: u16;
-        core::arch::asm!("mov {0:x}, fs", out(reg) fs);
+        unsafe {
+            core::arch::asm!("mov {0:x}, fs", out(reg) fs);
+        }
         fs
     }
     
     unsafe fn read_gs() -> u16 {
         let gs: u16;
-        core::arch::asm!("mov {0:x}, gs", out(reg) gs);
+        unsafe {
+            core::arch::asm!("mov {0:x}, gs", out(reg) gs);
+        }
         gs
     }
     
     unsafe fn read_tr() -> u16 {
         let tr: u16;
-        core::arch::asm!("str {0:x}", out(reg) tr);
+        unsafe {
+            core::arch::asm!("str {0:x}", out(reg) tr);
+        }
         tr
     }
     
     unsafe fn read_msr(msr: u32) -> u64 {
         let (high, low): (u32, u32);
-        core::arch::asm!("rdmsr", in("ecx") msr, out("eax") low, out("edx") high);
+        unsafe {
+            core::arch::asm!("rdmsr", in("ecx") msr, out("eax") low, out("edx") high);
+        }
         ((high as u64) << 32) | (low as u64)
     }
     
     unsafe fn read_tr_base() -> u64 {
         // Read TR base from GDT
-        let tr = Self::read_tr();
-        let gdtr_base = Self::read_gdtr_base();
+        let tr = unsafe { Self::read_tr() };
+        let gdtr_base = unsafe { Self::read_gdtr_base() };
         let gdt_entry = gdtr_base + (tr as u64 & !7);
-        let descriptor = core::ptr::read_volatile(gdt_entry as *const u64);
+        let descriptor = unsafe { core::ptr::read_volatile(gdt_entry as *const u64) };
         
         // Extract base address from TSS descriptor
         let base_low = (descriptor >> 16) & 0xFFFFFF;
@@ -684,13 +706,17 @@ impl VmxEngine {
     
     unsafe fn read_gdtr_base() -> u64 {
         let mut gdtr: [u8; 10] = [0; 10];
-        core::arch::asm!("sgdt [{}]", in(reg) gdtr.as_mut_ptr());
+        unsafe {
+            core::arch::asm!("sgdt [{}]", in(reg) gdtr.as_mut_ptr());
+        }
         u64::from_le_bytes([gdtr[2], gdtr[3], gdtr[4], gdtr[5], gdtr[6], gdtr[7], gdtr[8], gdtr[9]])
     }
     
     unsafe fn read_idtr_base() -> u64 {
         let mut idtr: [u8; 10] = [0; 10];
-        core::arch::asm!("sidt [{}]", in(reg) idtr.as_mut_ptr());
+        unsafe {
+            core::arch::asm!("sidt [{}]", in(reg) idtr.as_mut_ptr());
+        }
         u64::from_le_bytes([idtr[2], idtr[3], idtr[4], idtr[5], idtr[6], idtr[7], idtr[8], idtr[9]])
     }
 

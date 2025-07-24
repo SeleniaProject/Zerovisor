@@ -53,7 +53,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn client_base_url(url in "http://[a-z]{1,8}\.local(:[0-9]{1,5})?") {
+        fn client_base_url(url in r"http://[a-z]{1,8}\.local(:[0-9]{1,5})?") {
             let c = Client::new(url.clone());
             prop_assert!(c.base.starts_with("http"));
         }

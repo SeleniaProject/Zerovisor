@@ -81,8 +81,41 @@ impl Timer for X86Timer {
 
 /// Calibrate TSC frequency
 fn calibrate_tsc() -> u64 {
-    // Simplified - would use proper calibration method
-    3_000_000_000 // 3 GHz placeholder
+    // This routine programs PIT channel-2 in one-shot mode for 50 ms and measures
+    // the number of TSC ticks elapsed. We use the standard ISA I/O ports.
+    // Safety: direct port I/O requires `unsafe` but runs in early boot context.
+    const PIT_BASE: u16 = 0x40;
+    const PIT_MODE_PORT: u16 = 0x43;
+
+    unsafe {
+        // Disable speaker, enable gate for channel 2.
+        let mut val: u8;
+        core::arch::asm!("in al, dx", in("dx") 0x61u16, out("al") val, options(nomem, nostack, preserves_flags));
+        val &= !0x02; // clear speaker enable
+        val |= 0x01;  // set gate2 high
+        core::arch::asm!("out dx, al", in("dx") 0x61u16, in("al") val, options(nomem, nostack, preserves_flags));
+
+        // Program channel 2: mode 0 (interrupt on terminal count), binary, load 16-bit value 59659 for ~50ms.
+        core::arch::asm!("out dx, al", in("dx") PIT_MODE_PORT, in("al") 0b1011_0000u8, options(nomem, nostack, preserves_flags));
+        let reload: u16 = 59659; // 1193182 Hz / 20 ≈ 50 ms
+        core::arch::asm!("out dx, al", in("dx") 0x42u16, in("al") (reload & 0xFF) as u8, options(nomem, nostack));
+        core::arch::asm!("out dx, al", in("dx") 0x42u16, in("al") (reload >> 8) as u8, options(nomem, nostack));
+
+        // Clear OUT2 bit, then poll until it sets to 1 (count reaches zero).
+        core::arch::asm!("in al, dx", in("dx") 0x61u16, out("al") val, options(nomem, nostack));
+        val &= !0x20; core::arch::asm!("out dx, al", in("dx") 0x61u16, in("al") val);
+
+        let start = core::arch::x86_64::_rdtsc();
+        loop {
+            core::arch::asm!("in al, dx", in("dx") 0x61u16, out("al") val, options(nomem, nostack, preserves_flags));
+            if val & 0x20 != 0 { break; }
+            core::arch::asm!("pause", options(nomem, nostack));
+        }
+        let end = core::arch::x86_64::_rdtsc();
+        let ticks = end - start;
+        // Duration ≈ 50 ms => frequency = ticks / 0.05
+        (ticks * 20) // ticks per second
+    }
 }
 
 /// Calibrate APIC timer frequency

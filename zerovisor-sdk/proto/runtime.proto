@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package runtime.v1alpha2;
+
+message PodSandboxMetadata {
+  string name = 1;
+  string uid = 2;
+  string namespace = 3;
+  uint32 attempt = 4;
+}
+
+message ContainerMetadata {
+  string name = 1;
+  uint32 attempt = 2;
+}
+
+message CreatePodSandboxRequest { PodSandboxMetadata metadata = 1; }
+message CreatePodSandboxResponse { string pod_sandbox_id = 1; }
+
+message StopPodSandboxRequest { string pod_sandbox_id = 1; }
+message StopPodSandboxResponse {}
+
+message RemovePodSandboxRequest { string pod_sandbox_id = 1; }
+message RemovePodSandboxResponse {}
+
+message CreateContainerRequest {
+  string pod_sandbox_id = 1;
+  ContainerMetadata metadata = 2;
+}
+message CreateContainerResponse { string container_id = 1; }
+
+message StartContainerRequest { string container_id = 1; }
+message StartContainerResponse {}
+
+message StopContainerRequest { string container_id = 1; int64 timeout = 2; }
+message StopContainerResponse {}
+
+message RemoveContainerRequest { string container_id = 1; }
+message RemoveContainerResponse {}
+
+service RuntimeService {
+  rpc CreatePodSandbox(CreatePodSandboxRequest) returns (CreatePodSandboxResponse);
+  rpc StopPodSandbox(StopPodSandboxRequest) returns (StopPodSandboxResponse);
+  rpc RemovePodSandbox(RemovePodSandboxRequest) returns (RemovePodSandboxResponse);
+  rpc CreateContainer(CreateContainerRequest) returns (CreateContainerResponse);
+  rpc StartContainer(StartContainerRequest) returns (StartContainerResponse);
+  rpc StopContainer(StopContainerRequest) returns (StopContainerResponse);
+  rpc RemoveContainer(RemoveContainerRequest) returns (RemoveContainerResponse);
+} 

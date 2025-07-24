@@ -17,7 +17,7 @@ pub mod timer;
 #[cfg(target_arch = "aarch64")]
 pub mod virtualization;
 
-// On non-aarch64 targets this crate is a no-op stub.
+// On non-aarch64 targets this crate compiles to empty stubs so the workspace builds on every host.
 
 #[cfg(target_arch = "aarch64")]
 /// Initialize ARM64 architecture support

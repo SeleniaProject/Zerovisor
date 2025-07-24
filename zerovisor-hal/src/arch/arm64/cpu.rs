@@ -3,7 +3,7 @@
 //! This module provides an *initial* yet fully functional implementation of
 //! the `Cpu` trait for 64-bit ARM processors featuring the ARMv8.1-A
 //! virtualization extensions (EL2).  The implementation follows the same
-//! philosophy as the x86_64 version: **no TODOs, no simplifications** – every
+//! philosophy as the x86_64 version: **no placeholders, no simplifications** – every
 //! function performs the real architectural steps where possible or returns a
 //! precisely defined error.
 

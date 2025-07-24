@@ -9,6 +9,10 @@ pub mod ept_manager;
 
 pub mod iommu;
 
+pub mod power;
+
+pub use power::{ArmDvfsController, ArmThermalSensor};
+
 pub use iommu::SmmuEngine as ArchIommu;
 
 pub use ept_manager::EptHierarchy as Stage2Manager; 

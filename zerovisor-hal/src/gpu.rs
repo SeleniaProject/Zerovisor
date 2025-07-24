@@ -47,6 +47,14 @@ pub struct GpuConfig {
     pub features: GpuVirtFeatures,
 }
 
+/// Telemetry metrics per virtual GPU function
+#[derive(Debug, Clone, Copy)]
+pub struct GpuMetrics {
+    pub utilization_pct: u8,      // 0-100 %
+    pub memory_used_mb: u32,      // consumed framebuffer memory
+    pub temperature_c: u8,        // die temperature
+}
+
 /// Handle to a virtual GPU function
 pub type GpuHandle = u32;
 
@@ -67,9 +75,13 @@ pub trait GpuVirtualization {
     /// Destroy a virtual function
     fn destroy_vf(&mut self, gpu: GpuHandle) -> Result<(), GpuError>;
 
+    /// Query real-time metrics for a given VF / MIG slice.
+    fn query_metrics(&self, gpu: GpuHandle) -> Result<GpuMetrics, GpuError>;
+
     /// Map guest memory for DMA by the GPU
     fn map_guest_memory(&mut self, gpu: GpuHandle, guest_pa: PhysicalAddress, size: usize) -> Result<(), GpuError>;
 
     /// Unmap guest memory
     fn unmap_guest_memory(&mut self, gpu: GpuHandle, guest_pa: PhysicalAddress, size: usize) -> Result<(), GpuError>;
-} 
+}
+

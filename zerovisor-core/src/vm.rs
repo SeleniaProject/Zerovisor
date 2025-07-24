@@ -32,6 +32,7 @@ use zerovisor_hal::HalError;
 use crate::memory as hv_mem;
 use crate::security::{self, SecurityEvent};
 use crate::ZerovisorError;
+use zerovisor_hal::virtualization::VmExitReason;
 
 /// VM ライフサイクル状態
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +143,27 @@ pub fn get_state(handle: VmHandle) -> Option<VmState> {
 /// VM 統計を取得 (読み取り専用コピー)
 pub fn get_stats(handle: VmHandle) -> Option<VmStats> {
     VMS.lock().get(&handle).map(|e| e.stats.clone())
+}
+
+/// Update per-VM statistics for a VMEXIT.
+pub fn record_vmexit(handle: VmHandle, reason: &VmExitReason, latency_ns: u64) {
+    let mut map = VMS.lock();
+    if let Some(entry) = map.get_mut(&handle) {
+        let idx = exit_reason_index(reason);
+        entry.stats.record_exit(idx, latency_ns * 3); // convert ns→cycles approx (3GHz)
+    }
+}
+
+/// Convert exit reason enum into a compact index (0-63).
+fn exit_reason_index(r: &VmExitReason) -> usize {
+    match r {
+        VmExitReason::Hlt => 0,
+        VmExitReason::Cpuid { .. } => 1,
+        VmExitReason::IoInstruction { .. } => 2,
+        VmExitReason::NestedPageFault { .. } => 3,
+        VmExitReason::Hypercall { .. } => 4,
+        _ => 63,
+    }
 }
 
 // --------------------------------------------------------------------------

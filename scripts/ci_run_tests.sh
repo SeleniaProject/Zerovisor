@@ -22,24 +22,28 @@ PROPTEST_CASES=256 cargo test --all --features "formal_verification coq_proofs" 
 # Formal verification stage
 # ---------------------------------------------------------------------------
 
-# 1. TLA+ model checks – requires `tlapm` tool (TLAPS). Skipped if not present.
-if command -v tlapm &>/dev/null; then
-  echo "Running TLA+ checks..."
-  for spec in formal_specs/*.tla; do
-    echo "Checking ${spec}"
-    tlapm --toolbox "$spec"
-  done
-else
-  echo "tlapm not found; skipping TLA+ checks"
+# Enforce presence of formal verification toolchain.
+if ! command -v tlapm &>/dev/null; then
+  echo "ERROR: tlapm (TLA+ Proof Manager) not found. Formal verification required." >&2
+  exit 1
 fi
 
-# 2. Coq proofs – compile any .v files when Coq is available.
-if command -v coqc &>/dev/null; then
-  echo "Building Coq proofs..."
-  find formal_specs -name '*.v' -print0 | xargs -0 -I{} coqc {}
-else
-  echo "coqc not found; skipping Coq proof compilation"
+# 1. TLA+ model checks (fail on any error).
+echo "Running TLA+ checks..."
+for spec in formal_specs/*.tla; do
+  echo "Checking ${spec}"
+  tlapm --toolbox "$spec"
+done
+
+# Enforce Coq availability.
+if ! command -v coqc &>/dev/null; then
+  echo "ERROR: coqc (Coq compiler) not found. Formal proofs must pass." >&2
+  exit 1
 fi
+
+# 2. Coq proof compilation (fail on error).
+echo "Building Coq proofs..."
+find formal_specs -name '*.v' -print0 | xargs -0 -I{} coqc {}
 # Doc pass
 cargo doc --no-deps --workspace 
 

@@ -96,7 +96,8 @@ impl QuantumScheduler {
         if entity.deadline_ns.is_some() {
             self.real_time_queue.push(entity);
         } else {
-            self.ready_queue.push(entity);
+            // Place into local queue based on current core for cache locality.
+            init_local_queue().lock().push(entity);
         }
     }
 
@@ -154,8 +155,25 @@ impl QuantumScheduler {
             return self.real_time_queue.pop();
         }
 
-        // 通常キュー。
-        let ent = self.ready_queue.pop();
+        // 通常キュー: first local, then steal from others if empty.
+        let ent = {
+            let local = init_local_queue();
+            let mut guard = local.lock();
+            if let Some(e) = guard.pop() { Some(e) } else {
+                // Work stealing: iterate other cores.
+                let cid = core_id();
+                let mut stolen = None;
+                for i in 0..MAX_CORES {
+                    if i == cid { continue; }
+                    unsafe {
+                        if let Some(q) = &LOCAL_QUEUES[i] {
+                            if let Some(e) = q.lock().pop() { stolen = Some(e); break; }
+                        }
+                    }
+                }
+                stolen
+            }
+        };
 
         // Latency measurement
         let latency_ns = cycles_to_nanoseconds(get_cycle_counter() - start_cycles);
@@ -171,6 +189,34 @@ impl QuantumScheduler {
     pub fn handle_quantum_expiry(&mut self, entity: SchedEntity) {
         // RR のようにキューへ戻す。
         self.add_entity(entity);
+    }
+
+    /// Remove all scheduling entities belonging to the specified VM from every queue.
+    pub fn remove_vm(&mut self, vm: VmHandle) {
+        // Helper closure to purge a BinaryHeap by reconstructing it sans the target VM.
+        fn purge(queue: &mut BinaryHeap<SchedEntity>, vm: VmHandle) {
+            let mut temp: BinaryHeap<SchedEntity> = BinaryHeap::new();
+            while let Some(ent) = queue.pop() {
+                if ent.vm != vm { temp.push(ent); }
+            }
+            *queue = temp;
+        }
+
+        purge(&mut self.ready_queue, vm);
+        purge(&mut self.real_time_queue, vm);
+
+        // Purge per-core local queues.
+        for i in 0..MAX_CORES {
+            unsafe {
+                if let Some(ref q) = LOCAL_QUEUES[i] {
+                    let mut guard = q.lock();
+                    purge(&mut guard, vm);
+                }
+            }
+        }
+
+        // Remove execution statistics for the VM.
+        self.stats.retain(|&(v, _), _| v != vm);
     }
 
     /// 量子長を ns 単位で設定。
@@ -207,6 +253,31 @@ static SCHEDULER: Mutex<QuantumScheduler> = Mutex::new(QuantumScheduler::new());
 static DEADLINE_MISSES: AtomicU64 = AtomicU64::new(0);
 static LAST_SCHED_LATENCY_NS: AtomicU64 = AtomicU64::new(0);
 
+/// Maximum assumed CPU cores (static for simplicity).
+const MAX_CORES: usize = 8;
+
+/// Per-core ready queues protected by spin::Mutex; initialized lazily.
+static mut LOCAL_QUEUES: [Option<Mutex<BinaryHeap<SchedEntity>>>; MAX_CORES] = [None, None, None, None, None, None, None, None];
+
+/// Get current core id (APIC ID on x86; fallback 0).
+#[inline] fn core_id() -> usize {
+    #[cfg(target_arch = "x86_64")]
+    { unsafe { core::arch::x86_64::_cpuid(1).ebx as usize & 0xFF } % MAX_CORES }
+    #[cfg(not(target_arch = "x86_64"))]
+    { 0 }
+}
+
+/// Initialize local queue for the calling core if not yet present.
+fn init_local_queue() -> &'static Mutex<BinaryHeap<SchedEntity>> {
+    let cid = core_id();
+    unsafe {
+        if LOCAL_QUEUES[cid].is_none() {
+            LOCAL_QUEUES[cid] = Some(Mutex::new(BinaryHeap::new()));
+        }
+        LOCAL_QUEUES[cid].as_ref().unwrap()
+    }
+}
+
 /// サブシステム初期化 (Task 5.1)。
 pub fn init() -> Result<(), ZerovisorError> {
     // 今のところ特別な HW 初期化は不要。
@@ -228,6 +299,22 @@ pub fn quantum_expired(entity: SchedEntity) { SCHEDULER.lock().handle_quantum_ex
 /// 実行時間を記録。
 pub fn record_exec_time(entity: SchedEntity, exec_ns: u64) {
     SCHEDULER.lock().record_exec_time(entity, exec_ns);
+}
+
+/// Remove all scheduler entries for a VM that is being shut down.
+pub fn remove_vm(vm: VmHandle) {
+    SCHEDULER.lock().remove_vm(vm);
+}
+
+/// Automatically verify WCET every second; if violation found, lower priority.
+pub fn wcet_auto_prove(threshold_ns: u64) {
+    let viol = wcet_violations(threshold_ns);
+    if !viol.is_empty() {
+        crate::log!("[sched] WCET violation detected – applying fallback");
+        for (vm, vcpu, _) in viol {
+            inherit_priority(vm, vcpu, 10); // drop priority
+        }
+    }
 }
 
 /// リアルタイムデッドラインミス総数を取得。

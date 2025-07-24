@@ -133,3 +133,36 @@ pub trait PhysicalAllocator {
     /// Get used memory
     fn used_memory(&self) -> usize;
 }
+
+/// Memory allocation errors
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryError {
+    OutOfMemory,
+    InvalidAlignment,
+    InvalidSize,
+}
+
+/// Allocate aligned memory for hypervisor use
+pub fn allocate_aligned(size: usize, align: usize) -> Result<*mut u8, MemoryError> {
+    // For now, use a simple static allocation approach
+    // In a real implementation, this would use a proper allocator
+    static mut HEAP: [u8; 1024 * 1024] = [0; 1024 * 1024]; // 1MB heap
+    static mut HEAP_OFFSET: usize = 0;
+    
+    unsafe {
+        // Align the current offset
+        let aligned_offset = (HEAP_OFFSET + align - 1) & !(align - 1);
+        
+        if aligned_offset + size > HEAP.len() {
+            return Err(MemoryError::OutOfMemory);
+        }
+        
+        let ptr = HEAP.as_mut_ptr().add(aligned_offset);
+        HEAP_OFFSET = aligned_offset + size;
+        
+        // Zero the allocated memory
+        core::ptr::write_bytes(ptr, 0, size);
+        
+        Ok(ptr)
+    }
+}

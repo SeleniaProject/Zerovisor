@@ -9,6 +9,8 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use pqcrypto_kyber::{kyber512, kyber768};
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::{Aead, KeyInit, OsRng, rand_core::RngCore};
 use pqcrypto_dilithium::{dilithium3, dilithium5};
 use pqcrypto_sphincsplus::sphincssha256128ssimple as sphincs128s;
 // Bring trait methods (as_bytes/from_bytes) into scope.
@@ -121,16 +123,55 @@ impl QuantumCrypto {
         Self { kyber: kyber_generate(), dilithium: dilithium_generate(), sphincs: sphincs_generate() }
     }
 
-    /// Encrypt data buffer using Kyber session key + XOR (placeholder).
-    /// In production replace with AES-GCM or similar keyed by shared secret.
+    /// Encrypt data buffer using AES-256-GCM, key derived from Kyber shared secret.
+    /// Output format: [KyberCipher (1088B)] [12B nonce] [ciphertext+tag]
     pub fn encrypt_memory(&self, data: &[u8]) -> Result<Vec<u8>, ()> {
         let ctxt = kyber_encapsulate(&self.kyber.public);
-        let mut out = Vec::with_capacity(32 + data.len());
+
+        // Derive 256-bit key via SHA-256 of shared secret.
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(&ctxt.shared_key);
+        let key_bytes = hasher.finalize();
+        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+
+        // Random 96-bit nonce
+        let mut nonce_bytes = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+
+        let ciphertext = cipher.encrypt(nonce, data).map_err(|_| ())?;
+
+        let mut out = Vec::with_capacity(ctxt.cipher.len() + 12 + ciphertext.len());
         out.extend_from_slice(&ctxt.cipher);
-        for (i, b) in data.iter().enumerate() {
-            out.push(*b ^ ctxt.shared_key[i % ctxt.shared_key.len()]);
-        }
+        out.extend_from_slice(&nonce_bytes);
+        out.extend_from_slice(&ciphertext);
         Ok(out)
+    }
+
+    /// Decrypt buffer created by `encrypt_memory`.
+    pub fn decrypt_memory(&self, blob: &[u8]) -> Result<Vec<u8>, ()> {
+        // 1. Extract Kyber ciphertext (length from kyber768::ciphertext_bytes())
+        let ct_len = kyber768::ciphertext_bytes();
+        if blob.len() < ct_len + 12 { return Err(()); }
+        let kyber_ct = &blob[..ct_len];
+        let nonce_bytes = &blob[ct_len..ct_len+12];
+        let ciphertext = &blob[ct_len+12..];
+
+        // 2. Decapsulate to derive shared secret
+        let ss = kyber_decapsulate(kyber_ct, &self.kyber.secret);
+
+        // 3. Derive AES key
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(&ss);
+        let key_bytes = hasher.finalize();
+        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(nonce_bytes);
+
+        cipher.decrypt(nonce, ciphertext).map_err(|_| ())
     }
 
     /// Sign arbitrary blob with Dilithium and return detached signature.

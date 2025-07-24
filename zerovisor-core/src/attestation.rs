@@ -22,6 +22,7 @@ use alloc::vec::Vec;
 use sha2::{Digest, Sha256};
 use crate::crypto::{dilithium_generate, dilithium_sign, dilithium_verify, DilithiumKeypair};
 use crate::scheduler::get_cycle_counter;
+use zerovisor_hal::tpm;
 
 /// Fixed build-time identifier included in the measurement.
 const BUILD_ID: &[u8] = b"Zerovisor Core Build 0.1.0";
@@ -37,6 +38,17 @@ pub struct AttestationReport {
     pub hv_measurement: [u8; 32],
     /// Dilithium detached signature over (nonce || timestamp || measurement).
     pub signature: Vec<u8>,
+}
+
+/// Attestation certificate chaining Dilithium public key with TPM EK.
+#[derive(Debug, Clone)]
+pub struct AttestationCertificate {
+    /// TPM endorsement public key (hash stub).
+    pub ek_pub: [u8;32],
+    /// Attestation public key (Dilithium).
+    pub attestation_pub: Vec<u8>,
+    /// Signature over attestation_pub with EK (SHA-256 hash stub).
+    pub signature: [u8;32],
 }
 
 /// Remote attestation engine owning a Dilithium keypair.
@@ -60,6 +72,9 @@ impl RemoteAttestation {
         let nonce_val = nonce.unwrap_or_else(gen_nonce);
         let ts = crate::scheduler::cycles_to_nanoseconds(get_cycle_counter());
         let measurement = compute_measurement();
+
+        // Seal measurement into TPM PCR[7] for remote quote (best practice)
+        let _ = tpm::pcr_extend(7, &measurement);
 
         // Build message to be signed: nonce || timestamp || measurement
         let mut msg = Vec::with_capacity(32 + 8 + 32);
@@ -87,6 +102,13 @@ impl RemoteAttestation {
 
         // Compare measurement with locally computed one.
         compute_measurement() == report.hv_measurement
+    }
+
+    /// Export an attestation certificate signed by TPM endorsement key.
+    pub fn export_certificate(&self) -> AttestationCertificate {
+        let ek = *tpm::endorsement_key();
+        let sig = tpm::sign_with_ek(self.public_key());
+        AttestationCertificate { ek_pub: ek, attestation_pub: self.public_key().to_vec(), signature: sig }
     }
 }
 

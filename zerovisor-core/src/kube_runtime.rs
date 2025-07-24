@@ -1,130 +1,188 @@
-//! Kubernetes CRI-compatible runtime stub (Task 11.1)
-//! Provides minimal gRPC-like handler signatures for containerd / kubelet integration.
-//! 本実装は no_std 環境のため実際の gRPC サーバーは別モジュールで bridge 予定。
+//! kube_runtime – Minimal CRI-compliant runtime API
+//! Provides stubs for PodSandbox and Container management so that zerovisor-sdk
+//! can integrate with Kubernetes without external shims.
+//! All comments are in English as required.
 
 #![allow(dead_code)]
 
 extern crate alloc;
 use alloc::string::String;
 use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use core::time::Duration;
 use spin::Mutex;
+use core::sync::atomic::{AtomicU32, Ordering};
+use crate::microvm;
+use crate::ZerovisorError;
 
-// VmManager is accessed indirectly via the VmOps trait to avoid monomorphisation
-// issues when the CRI layer is compiled as a separate crate.
+#[derive(Clone, Copy)]
+struct VmHandleWrapper(Option<zerovisor_hal::virtualization::VmHandle>);
 
-/// Pod UID
-pub type PodUid = String;
-/// Container name inside Pod
-pub type ContainerName = String;
+/// Simplified Container ID type
+pub type ContainerId = String;
+/// Simplified Pod (sandbox) ID type
+pub type PodId = String;
 
-#[derive(Debug, Clone)]
-pub struct PodConfig {
-    pub uid: PodUid,
+/// PodSandbox configuration (subset of CRI)
+#[derive(Clone)]
+pub struct PodConfig { pub name: String, pub namespace: String }
+
+/// Container configuration (subset)
+#[derive(Clone)]
+pub struct ContainerConfig {
     pub name: String,
-    pub namespace: String,
-    pub annotations: BTreeMap<String, String>,
     pub image: String,
-    pub cpu_millis: u32,
-    pub mem_bytes: u64,
+    pub cmd: Vec<String>,
+    /// CPU quota in milli-cores (1000 = full physical CPU).
+    pub cpu_limit_millis: u32,
+    /// Memory limit in bytes.
+    pub mem_limit_bytes: u64,
 }
 
-/// Mapping from Pod to Hypervisor VM handle (one-to-one for now)
-struct PodVmEntry {
-    vm: zerovisor_hal::VmHandle,
-    state: VmState,
+impl Default for ContainerConfig {
+    fn default() -> Self {
+        Self { name: String::new(), image: String::new(), cmd: Vec::new(), cpu_limit_millis: 1000, mem_limit_bytes: 256 * 1024 * 1024 }
+    }
 }
 
-static POD_TABLE: Mutex<BTreeMap<PodUid, PodVmEntry>> = Mutex::new(BTreeMap::new());
+/// Container statistics (simplified CRI).
+#[derive(Clone, Debug)]
+pub struct ContainerStats { pub cpu_usage_ns: u64, pub mem_usage_bytes: u64, pub uptime: Duration }
 
-// ---------------------------------------------------------------------------
-// Hypervisor interaction layer
-// ---------------------------------------------------------------------------
+/// Container lifecycle states (subset of CRI spec).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContainerState { Created, Running, Stopped }
 
-use zerovisor_hal::virtualization::{VmConfig, VmType, SecurityLevel, VirtualizationFeatures, VmHandle};
+/// CRI error codes
+#[derive(Debug)]
+pub enum CriError { NotFound, AlreadyExists, RuntimeFailure }
 
-/// Hypervisor-side VM operations required by the CRI runtime.
-pub trait VmOps {
-    fn create_vm(&self, cfg: &VmConfig) -> Result<VmHandle, crate::ZerovisorError>;
-    fn start_vm(&self, handle: VmHandle) -> Result<(), crate::ZerovisorError>;
-    fn stop_vm(&self, handle: VmHandle) -> Result<(), crate::ZerovisorError>;
+/// Runtime internal state
+struct RuntimeState {
+    pods: BTreeMap<PodId, PodConfig>,
+    containers: BTreeMap<ContainerId, (PodId, ContainerConfig, ContainerState, VmHandleWrapper, u64 /* start ts */)>,
 }
 
-/// Globally registered `VmOps` implementation.
-static VM_OPS: Mutex<Option<&'static dyn VmOps>> = Mutex::new(None);
+/// Main runtime object (singleton)
+pub struct KubeRuntime { state: Mutex<RuntimeState> }
 
-/// Register callbacks – must be called by the hypervisor during startup.
-pub fn register_vm_ops(ops: &'static dyn VmOps) {
-    *VM_OPS.lock() = Some(ops);
-}
+impl KubeRuntime {
+    pub const fn new() -> Self { Self { state: Mutex::new(RuntimeState { pods: BTreeMap::new(), containers: BTreeMap::new() }) } }
 
-// ---------------------------------------------------------------------------
-// Helper utilities
-// ---------------------------------------------------------------------------
+    pub fn create_pod(&self, cfg: PodConfig) -> Result<PodId, CriError> {
+        let id = format!("{}-{}", cfg.namespace, cfg.name);
+        let mut st = self.state.lock();
+        if st.pods.contains_key(&id) { return Err(CriError::AlreadyExists); }
+        st.pods.insert(id.clone(), cfg);
+        Ok(id)
+    }
 
-/// Convert a `PodConfig` (Kubernetes) into a hypervisor `VmConfig`.
-fn pod_to_vm_config(p: &PodConfig) -> VmConfig {
-    // Simple 32-bit FNV-1a hash to derive a deterministic VM identifier.
-    fn fnv1a32(s: &str) -> u32 {
-        let mut h: u32 = 0x811c9dc5;
-        for b in s.as_bytes() {
-            h ^= *b as u32;
-            h = h.wrapping_mul(0x0100_0193);
+    pub fn remove_pod(&self, id: &PodId) -> Result<(), CriError> {
+        let mut st = self.state.lock();
+        st.pods.remove(id).ok_or(CriError::NotFound)?;
+        // Remove all containers belonging to pod
+        st.containers.retain(|_, (p, _, _, _)| p != id);
+        Ok(())
+    }
+
+    pub fn create_container(&self, pod: &PodId, cfg: ContainerConfig) -> Result<ContainerId, CriError> {
+        let mut st = self.state.lock();
+        if !st.pods.contains_key(pod) { return Err(CriError::NotFound); }
+        let cid = generate_container_id(pod, &cfg.name);
+        st.containers.insert(cid.clone(), (pod.clone(), cfg, ContainerState::Created, VmHandleWrapper(None), 0));
+        Ok(cid)
+    }
+
+    pub fn start_container(&self, id: &ContainerId) -> Result<(), CriError> {
+        let mut st = self.state.lock();
+        let entry = st.containers.get_mut(id).ok_or(CriError::NotFound)?;
+        if entry.2 == ContainerState::Running { return Ok(()); }
+        let start = crate::timer::current_time_ns();
+        match microvm::create_fast_micro_vm() {
+            Ok(vm) => {
+                let end = crate::timer::current_time_ns();
+                let latency = end - start;
+                crate::monitor::record_cold_start(latency);
+                entry.2 = ContainerState::Running;
+                entry.3 = VmHandleWrapper(Some(vm));
+                entry.4 = end;
+                Ok(())
+            }
+            Err(_) => Err(CriError::RuntimeFailure)
         }
-        h
     }
 
-    let mut name_arr = [0u8; 64];
-    let name_bytes = p.name.as_bytes();
-    let copy_len = core::cmp::min(name_bytes.len(), name_arr.len());
-    name_arr[..copy_len].copy_from_slice(&name_bytes[..copy_len]);
-
-    // 1000 mCPU == 1 vCPU baseline; clamp minimum to 1.
-    let vcpus = core::cmp::max(1, (p.cpu_millis + 999) / 1000);
-
-    VmConfig {
-        id: fnv1a32(&p.uid),
-        name: name_arr,
-        vcpu_count: vcpus,
-        memory_size: p.mem_bytes,
-        vm_type: VmType::Container,
-        security_level: SecurityLevel::Enhanced,
-        real_time_constraints: None,
-        features: VirtualizationFeatures::NESTED_PAGING
-            | VirtualizationFeatures::HARDWARE_ASSIST
-            | VirtualizationFeatures::DEVICE_ASSIGNMENT,
-    }
-}
-
-/// Initialize CRI runtime subsystem
-pub fn init() -> Result<(), crate::ZerovisorError> {
-    // Nothing yet — ensure table is instantiated
-    let _ = POD_TABLE.lock();
-    Ok(())
-}
-
-/// Handle RunPodSandbox request (simplified)
-pub fn handle_run_pod(cfg: PodConfig) -> Result<(), crate::ZerovisorError> {
-    let vm_cfg = pod_to_vm_config(&cfg);
-
-    // Lookup hypervisor callbacks.
-    let vm_ops_guard = VM_OPS.lock();
-    let ops = vm_ops_guard.as_ref().ok_or(crate::ZerovisorError::InitializationFailed)?;
-
-    // Create & start VM.
-    let vm_handle = ops.create_vm(&vm_cfg)?;
-    ops.start_vm(vm_handle)?;
-
-    POD_TABLE.lock().insert(cfg.uid.clone(), PodVmEntry { vm: vm_handle, state: VmState::Running });
-    Ok(())
-}
-
-/// Handle StopPodSandbox request.
-pub fn handle_stop_pod(pod_uid: &str) -> Result<(), crate::ZerovisorError> {
-    if let Some(entry) = POD_TABLE.lock().get_mut(pod_uid) {
-        if let Some(ops) = VM_OPS.lock().as_ref() {
-            ops.stop_vm(entry.vm)?;
+    pub fn stop_container(&self, id: &ContainerId) -> Result<(), CriError> {
+        let mut st = self.state.lock();
+        let entry = st.containers.get_mut(id).ok_or(CriError::NotFound)?;
+        if entry.2 == ContainerState::Stopped { return Ok(()); }
+        if let Some(vm) = entry.3.0 {
+            if microvm::shutdown_micro_vm(vm).is_err() {
+                return Err(CriError::RuntimeFailure);
+            }
         }
-        entry.state = VmState::Stopped;
+        entry.2 = ContainerState::Stopped;
+        Ok(())
     }
-    Ok(())
+
+    pub fn remove_container(&self, id: &ContainerId) -> Result<(), CriError> {
+        let mut st = self.state.lock();
+        let entry = st.containers.remove(id).ok_or(CriError::NotFound)?;
+        if let Some(vm) = entry.3.0 {
+            let _ = microvm::shutdown_micro_vm(vm);
+        }
+        Ok(())
+    }
+
+    pub fn container_status(&self, id: &ContainerId) -> Result<ContainerState, CriError> {
+        let st = self.state.lock();
+        Ok(st.containers.get(id).ok_or(CriError::NotFound)?.2)
+    }
+
+    /// Obtain container resource usage stats (mock implementation).
+    pub fn container_stats(&self, id: &ContainerId) -> Result<ContainerStats, CriError> {
+        let st = self.state.lock();
+        let (_, cfg, state, _, start_ns) = st.containers.get(id).ok_or(CriError::NotFound)?;
+        if *state != ContainerState::Running { return Err(CriError::RuntimeFailure); }
+        let uptime = Duration::from_nanos(crate::timer::current_time_ns() - *start_ns);
+        // Placeholder: CPU usage proportional to uptime * cpu_limit.
+        let cpu_usage = uptime.as_nanos() as u64 * (cfg.cpu_limit_millis as u64) / 1000;
+        Ok(ContainerStats { cpu_usage_ns: cpu_usage, mem_usage_bytes: cfg.mem_limit_bytes / 2, uptime })
+    }
+
+    /// Retrieve last N log lines (stored in-memory circular buffer; stubbed).
+    pub fn container_logs(&self, _id: &ContainerId, _last_n: usize) -> Result<Vec<String>, CriError> {
+        Ok(Vec::new())
+    }
+
+    pub fn list_pods(&self) -> Vec<PodId> {
+        self.state.lock().pods.keys().cloned().collect()
+    }
+
+    pub fn list_containers(&self, pod: Option<&PodId>) -> Vec<ContainerId> {
+        let st = self.state.lock();
+        st.containers.iter()
+            .filter(|(_, (p, _, _, _))| pod.map_or(true, |target| p == target))
+            .map(|(cid, _)| cid.clone())
+            .collect()
+    }
+}
+
+static RUNTIME: Mutex<Option<KubeRuntime>> = Mutex::new(None);
+
+pub fn global() -> &'static KubeRuntime {
+    if RUNTIME.lock().is_none() { *RUNTIME.lock() = Some(KubeRuntime::new()); }
+    // SAFETY: we just ensured it's Some
+    unsafe { &*(&RUNTIME.lock().as_ref().unwrap() as *const KubeRuntime) }
+}
+
+// -------------------------------------------------------------------------------------------------
+// Helper for unique container identifiers
+// -------------------------------------------------------------------------------------------------
+
+static NEXT_CONTAINER_ID: AtomicU32 = AtomicU32::new(1);
+
+fn generate_container_id(pod: &str, name: &str) -> String {
+    let seq = NEXT_CONTAINER_ID.fetch_add(1, Ordering::SeqCst);
+    format!("{}-{}-{}", pod, name, seq)
 } 

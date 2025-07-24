@@ -6,6 +6,11 @@
 //! This crate provides a unified interface for different CPU architectures,
 //! enabling the hypervisor to run on x86_64, ARM64, and RISC-V platforms.
 
+extern crate alloc;
+
+// Re-export alloc for internal use
+pub use alloc::{vec, vec::Vec, boxed::Box, string::String};
+
 pub mod cpu;
 pub mod memory;
 pub mod interrupts;
@@ -15,13 +20,20 @@ pub mod cycles;
 pub mod arch; // New architecture-specific module tree
 pub mod gpu;
 pub mod nic;
-pub mod power;
+pub mod power_mgmt;
 pub mod storage;
 pub mod accelerator;
 pub mod rdma_opt;
 pub mod rdma_vnet;
 pub mod iommu;
 pub mod dirty;
+pub mod pci;
+pub mod tpu;
+pub mod qpu;
+pub mod fpga;
+pub mod tpm;
+pub mod virtio_blk;
+pub mod numa;
 
 // Re-export core traits
 pub use cpu::{Cpu, CpuFeatures, CpuState};
@@ -31,9 +43,11 @@ pub use timer::{Timer, TimerCallback};
 pub use virtualization::{VirtualizationEngine, VmHandle, VmConfig};
 pub use gpu::{GpuVirtualization, GpuDeviceId, GpuConfig, GpuError};
 pub use accelerator::{AcceleratorVirtualization, AcceleratorId, AcceleratorInfo, AcceleratorType, AccelError};
+pub use qpu::QpuVirtualization;
 pub use nic::{HpcNic, NicAttr, NicError, RdmaOpKind, RdmaCompletion};
-pub use power::{DvfsController, ThermalSensor, PState, Temperature, PowerError};
+pub use power_mgmt::PowerManager;
 pub use dirty::{DirtyPageTracker, DirtyRange};
+pub use numa::{Topology as NumaTopology, NodeInfo as NumaNodeInfo};
 
 // Re-export architecture specific CPU implementations when available
 #[cfg(target_arch = "x86_64")]
@@ -59,18 +73,22 @@ pub fn init() -> Result<(), HalError> {
     #[cfg(target_arch = "x86_64")]
     {
         let _cpu = ArchCpu::init().map_err(|_| HalError::HardwareNotSupported)?;
+        // Start power management
+        power_mgmt::init();
         return Ok(());
     }
 
     #[cfg(target_arch = "aarch64")]
     {
         let _cpu = ArchCpu::init().map_err(|_| HalError::HardwareNotSupported)?;
+        power_mgmt::init();
         return Ok(());
     }
 
     #[cfg(target_arch = "riscv64")]
     {
         let _cpu = ArchCpu::init().map_err(|_| HalError::HardwareNotSupported)?;
+        power_mgmt::init();
         return Ok(());
     }
 }
@@ -84,12 +102,7 @@ pub enum HalError {
     InvalidConfiguration,
 }
 
-/// Return architecture-specific DVFS + thermal sensor interfaces when available.
-pub fn power_interfaces() -> Option<(&'static dyn DvfsController, &'static dyn ThermalSensor)> {
-    #[cfg(target_arch = "x86_64")]
-    {
-        return Some(arch::x86_64::power::interfaces());
-    }
-    #[allow(unreachable_code)]
-    None
+/// Return power management interface
+pub fn power_interfaces() -> Option<PowerManager> {
+    power_mgmt::power_manager()
 }
