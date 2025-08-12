@@ -1,0 +1,10 @@
+{
+  "banner": "Zerovisor: UEFIブート開始\r\n",
+  "env": "環境: x86_64 UEFI アプリケーション\r\n",
+  "ready": "状態: 初期化完了\r\n",
+  "feat_vmx": "機能: Intel VMX\r\n",
+  "feat_svm": "機能: AMD SVM\r\n",
+  "feat_ept": "機能: Intel EPT（示唆）\r\n",
+  "feat_npt": "機能: AMD NPT\r\n"
+}
+

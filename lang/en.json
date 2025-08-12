@@ -1,0 +1,10 @@
+{
+  "banner": "Zerovisor: UEFI bootstrap started\r\n",
+  "env": "Environment: x86_64 UEFI application\r\n",
+  "ready": "Status: Initialization complete\r\n",
+  "feat_vmx": "Feature: Intel VMX\r\n",
+  "feat_svm": "Feature: AMD SVM\r\n",
+  "feat_ept": "Feature: Intel EPT (hint)\r\n",
+  "feat_npt": "Feature: AMD NPT\r\n"
+}
+
