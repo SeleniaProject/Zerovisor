@@ -330,4 +330,49 @@ fn u64_to_hex(v: u64, out: &mut [u8]) -> usize {
     n
 }
 
+// --- DMAR/IVRS minimal summaries (header-only, safe) ---
+
+fn write_ascii_trim(src: &[u8], out: &mut [u8]) -> usize {
+    // Copy printable ASCII, trim trailing spaces
+    let mut end = src.len();
+    while end > 0 && src[end - 1] == b' ' { end -= 1; }
+    let mut n = 0;
+    for &b in &src[..end] {
+        let ch = if b >= 0x20 && b <= 0x7E { b } else { b'.' };
+        if n < out.len() { out[n] = ch; n += 1; } else { break; }
+    }
+    n
+}
+
+fn sdt_header_summary(label: &[u8; 4], hdr: &'static SdtHeader, out_line: &mut [u8]) -> usize {
+    let mut n = 0;
+    // e.g., "DMAR: len=xxxx rev=x oem=XXXXXX table=XXXXXXXX"
+    for &b in label.iter() { if n < out_line.len() { out_line[n] = b; n += 1; } }
+    if n + 2 <= out_line.len() { out_line[n] = b':'; n += 1; out_line[n] = b' '; n += 1; }
+    for &b in b"len=" { if n < out_line.len() { out_line[n] = b; n += 1; } }
+    n += u32_to_dec(hdr.length, &mut out_line[n..]);
+    for &b in b" rev=" { if n < out_line.len() { out_line[n] = b; n += 1; } }
+    n += u32_to_dec(hdr.revision as u32, &mut out_line[n..]);
+    for &b in b" oem=" { if n < out_line.len() { out_line[n] = b; n += 1; } }
+    n += write_ascii_trim(&hdr.oem_id, &mut out_line[n..]);
+    for &b in b" table=" { if n < out_line.len() { out_line[n] = b; n += 1; } }
+    n += write_ascii_trim(&hdr.oem_table_id, &mut out_line[n..]);
+    if n + 2 <= out_line.len() { out_line[n] = b'\r'; n += 1; out_line[n] = b'\n'; n += 1; }
+    n
+}
+
+/// Print a one-line summary for the DMAR table header.
+pub(crate) fn dmar_summary(mut writer: impl FnMut(&str), hdr: &'static SdtHeader) {
+    let mut buf = [0u8; 96];
+    let n = sdt_header_summary(b"DMAR", hdr, &mut buf);
+    let _ = writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+}
+
+/// Print a one-line summary for the IVRS table header.
+pub(crate) fn ivrs_summary(mut writer: impl FnMut(&str), hdr: &'static SdtHeader) {
+    let mut buf = [0u8; 96];
+    let n = sdt_header_summary(b"IVRS", hdr, &mut buf);
+    let _ = writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+}
+
 

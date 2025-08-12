@@ -31,6 +31,10 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         let b_ivrs = crate::firmware::acpi::find_ivrs(&system_table).is_some();
 
         let lang = i18n::detect_lang(&system_table);
+        // Resolve ACPI headers before borrowing stdout to avoid borrow conflicts
+        let dmar_hdr = if b_dmar { crate::firmware::acpi::find_dmar(&system_table) } else { None };
+        let ivrs_hdr = if b_ivrs { crate::firmware::acpi::find_ivrs(&system_table) } else { None };
+
         let stdout = system_table.stdout();
         let _ = stdout.reset(false);
         let _ = stdout.write_str(i18n::t(lang, i18n::key::BANNER));
@@ -41,7 +45,9 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         if b_ept { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_EPT)); }
         if b_npt { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_NPT)); }
         if b_dmar { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_VTD)); }
+        if let Some(h) = dmar_hdr { crate::firmware::acpi::dmar_summary(|s| { let _ = stdout.write_str(s); }, h); }
         if b_ivrs { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_AMDVI)); }
+        if let Some(h) = ivrs_hdr { crate::firmware::acpi::ivrs_summary(|s| { let _ = stdout.write_str(s); }, h); }
     }
 
     // ACPI discovery: Check presence of RSDP and core tables
