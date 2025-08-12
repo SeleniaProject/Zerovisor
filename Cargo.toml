@@ -1,0 +1,26 @@
+[package]
+name = "zerovisor"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["SeleniaProject"]
+description = "Zerovisor UEFI bootstrap entry for x86_64-unknown-uefi"
+
+[[bin]]
+name = "zerovisor"
+path = "src/efi_main.rs"
+
+[dependencies]
+# Use a version of the uefi crate with a stable two-argument #[entry] signature
+uefi = "0.28"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+opt-level = "s"
+
+
