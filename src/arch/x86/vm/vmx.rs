@@ -129,7 +129,7 @@ pub fn vmx_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude::Boo
 
     // Execute VMXON and capture flags
     let phys = mem as u64; // identity mapping assumption
-    let before = read_rflags();
+    let _before = read_rflags();
     unsafe { core::arch::asm!("vmxon [{}]", in(reg) &phys); }
     let after = read_rflags();
     let cf = (after & 0x1) != 0;

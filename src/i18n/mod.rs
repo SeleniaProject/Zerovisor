@@ -5,6 +5,7 @@
 //! string lifetimes static for UEFI text output.
 
 /// Supported languages.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub enum Lang {
     En,
