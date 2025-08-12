@@ -21,18 +21,27 @@ use core::fmt::Write as _;
 fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     // Print a minimal initialization banner to the UEFI console using i18n.
     {
+        // Detect features first without borrowing stdout, to satisfy the borrow checker.
+        use arch::x86::cpuid;
+        let b_vmx = cpuid::has_vmx();
+        let b_svm = cpuid::has_svm();
+        let b_ept = cpuid::may_support_ept();
+        let b_npt = cpuid::has_npt();
+        let b_dmar = crate::firmware::acpi::find_dmar(&system_table).is_some();
+        let b_ivrs = crate::firmware::acpi::find_ivrs(&system_table).is_some();
+
         let stdout = system_table.stdout();
         let _ = stdout.reset(false);
         let lang = i18n::detect_lang();
         let _ = stdout.write_str(i18n::t(lang, i18n::key::BANNER));
         let _ = stdout.write_str(i18n::t(lang, i18n::key::ENV));
 
-        // Feature detection: VMX/SVM/EPT/NPT (CPUID-only for EPT hint).
-        use arch::x86::cpuid;
-        if cpuid::has_vmx() { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_VMX)); }
-        if cpuid::has_svm() { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_SVM)); }
-        if cpuid::may_support_ept() { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_EPT)); }
-        if cpuid::has_npt() { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_NPT)); }
+        if b_vmx { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_VMX)); }
+        if b_svm { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_SVM)); }
+        if b_ept { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_EPT)); }
+        if b_npt { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_NPT)); }
+        if b_dmar { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_VTD)); }
+        if b_ivrs { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_AMDVI)); }
     }
 
     // ACPI discovery: Check presence of RSDP and core tables
@@ -99,7 +108,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                         let _ = stdout.write_str("VMX: available (preflight)\r\n");
                     }
                     // Report VMX control MSRs
-                    vmx::vmx_report_controls(&system_table);
+                    vmx::vmx_report_controls(&mut system_table);
                     let vmx_ok = vmx::vmx_smoke_test(&system_table).is_ok();
                     let stdout = system_table.stdout();
                     if vmx_ok { let _ = stdout.write_str("VMX: VMXON/VMXOFF smoke test OK\r\n"); }

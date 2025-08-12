@@ -72,7 +72,7 @@ fn u64_to_hex_buf(mut v: u64, out: &mut [u8]) -> usize {
 }
 
 /// Read VMX control MSRs and print allowed masks.
-pub fn vmx_report_controls(system_table: &uefi::table::SystemTable<uefi::prelude::Boot>) {
+pub fn vmx_report_controls(system_table: &mut uefi::table::SystemTable<uefi::prelude::Boot>) {
     let pin = unsafe { crate::arch::x86::msr::rdmsr(0x481) };
     let pri = unsafe { crate::arch::x86::msr::rdmsr(0x482) };
     let sec = unsafe { crate::arch::x86::msr::rdmsr(0x48B) };

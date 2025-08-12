@@ -1,0 +1,13 @@
+{
+  "banner": "Zerovisor: UEFI 引导已开始\r\n",
+  "env": "环境: x86_64 UEFI 应用程序\r\n",
+  "ready": "状态: 初始化完成\r\n",
+  "feat_vmx": "功能: Intel VMX\r\n",
+  "feat_svm": "功能: AMD SVM\r\n",
+  "feat_ept": "功能: Intel EPT（提示）\r\n",
+  "feat_npt": "功能: AMD NPT\r\n",
+  "feat_vtd": "功能: Intel VT-d（ACPI DMAR）\r\n",
+  "feat_amdvi": "功能: AMD-Vi（ACPI IVRS）\r\n"
+}
+
+

@@ -5,6 +5,8 @@
   "feat_vmx": "機能: Intel VMX\r\n",
   "feat_svm": "機能: AMD SVM\r\n",
   "feat_ept": "機能: Intel EPT（示唆）\r\n",
-  "feat_npt": "機能: AMD NPT\r\n"
+  "feat_npt": "機能: AMD NPT\r\n",
+  "feat_vtd": "機能: Intel VT-d（ACPI DMAR）\r\n",
+  "feat_amdvi": "機能: AMD-Vi（ACPI IVRS）\r\n"
 }
 

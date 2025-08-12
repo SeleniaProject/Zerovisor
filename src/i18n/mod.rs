@@ -9,6 +9,7 @@
 pub enum Lang {
     En,
     Ja,
+    Zh,
 }
 
 /// Select the language heuristically. In UEFI we do not query locale yet; we
@@ -27,6 +28,8 @@ pub mod key {
     pub const FEAT_SVM: &str = "feat_svm";
     pub const FEAT_EPT: &str = "feat_ept";
     pub const FEAT_NPT: &str = "feat_npt";
+    pub const FEAT_VTD: &str = "feat_vtd";
+    pub const FEAT_AMDVI: &str = "feat_amdvi";
 }
 
 /// Resolve a message key for a given language.
@@ -41,6 +44,8 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::FEAT_SVM => "Feature: AMD SVM\r\n",
             key::FEAT_EPT => "Feature: Intel EPT (hint)\r\n",
             key::FEAT_NPT => "Feature: AMD NPT\r\n",
+            key::FEAT_VTD => "Feature: Intel VT-d (ACPI DMAR)\r\n",
+            key::FEAT_AMDVI => "Feature: AMD-Vi (ACPI IVRS)\r\n",
             _ => "\r\n",
         },
         Lang::Ja => match key {
@@ -51,6 +56,20 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::FEAT_SVM => "機能: AMD SVM\r\n",
             key::FEAT_EPT => "機能: Intel EPT（示唆）\r\n",
             key::FEAT_NPT => "機能: AMD NPT\r\n",
+            key::FEAT_VTD => "機能: Intel VT-d（ACPI DMAR）\r\n",
+            key::FEAT_AMDVI => "機能: AMD-Vi（ACPI IVRS）\r\n",
+            _ => "\r\n",
+        },
+        Lang::Zh => match key {
+            key::BANNER => "Zerovisor: UEFI 引导已开始\r\n",
+            key::ENV => "环境: x86_64 UEFI 应用程序\r\n",
+            key::READY => "状态: 初始化完成\r\n",
+            key::FEAT_VMX => "功能: Intel VMX\r\n",
+            key::FEAT_SVM => "功能: AMD SVM\r\n",
+            key::FEAT_EPT => "功能: Intel EPT（提示）\r\n",
+            key::FEAT_NPT => "功能: AMD NPT\r\n",
+            key::FEAT_VTD => "功能: Intel VT-d（ACPI DMAR）\r\n",
+            key::FEAT_AMDVI => "功能: AMD-Vi（ACPI IVRS）\r\n",
             _ => "\r\n",
         },
     }

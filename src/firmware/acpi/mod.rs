@@ -62,6 +62,10 @@ const SIG_MADT: [u8; 4] = *b"APIC";
 const SIG_FADT: [u8; 4] = *b"FACP";
 /// MCFG signature
 const SIG_MCFG: [u8; 4] = *b"MCFG";
+/// DMAR (Intel VT-d) signature
+const SIG_DMAR: [u8; 4] = *b"DMAR";
+/// IVRS (AMD-Vi) signature
+const SIG_IVRS: [u8; 4] = *b"IVRS";
 
 fn calc_checksum(bytes: &[u8]) -> u8 {
     let mut sum: u8 = 0;
@@ -164,6 +168,16 @@ pub fn find_fadt(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader>
 
 pub fn find_mcfg(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
     find_table(system_table, SIG_MCFG)
+}
+
+/// Find Intel VT-d remapping table (DMAR) if present.
+pub fn find_dmar(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
+    find_table(system_table, SIG_DMAR)
+}
+
+/// Find AMD I/O virtualization reporting table (IVRS) if present.
+pub fn find_ivrs(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
+    find_table(system_table, SIG_IVRS)
 }
 
 /// Minimal MADT header for iterating APIC structures.
