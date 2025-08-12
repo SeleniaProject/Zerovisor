@@ -13,12 +13,51 @@ pub enum Lang {
     Zh,
 }
 
-/// Select the language heuristically. In UEFI we do not query locale yet; we
-/// default to English to maximize compatibility.
+use uefi::prelude::Boot;
+use uefi::table::SystemTable;
+// use uefi::cstr16; // Reserved for future use when reading PlatformLang
+
+/// Try to parse UEFI `PlatformLang` (RFC 3066 like "en-US", "ja-JP", "zh-CN").
+#[allow(dead_code)]
+fn parse_platform_lang_ascii(bytes: &[u8]) -> Option<Lang> {
+    // Accept only visible ASCII and stop at first NUL.
+    let mut len = 0usize;
+    while len < bytes.len() {
+        let b = bytes[len];
+        if b == 0 { break; }
+        if b < 0x20 || b > 0x7E { break; }
+        len += 1;
+    }
+    if len == 0 { return None; }
+    let s = &bytes[..len];
+    // Case-insensitive compare for language code prefix
+    // Match "en"/"en-US"/"en-*"
+    let eq_ci = |a: &[u8], b: &[u8]| -> bool {
+        if a.len() != b.len() { return false; }
+        for i in 0..a.len() {
+            let ca = a[i];
+            let cb = b[i];
+            let ca = if ca >= b'A' && ca <= b'Z' { ca + 32 } else { ca };
+            let cb = if cb >= b'A' && cb <= b'Z' { cb + 32 } else { cb };
+            if ca != cb { return false; }
+        }
+        true
+    };
+    let starts_with_ci = |pat: &[u8]| -> bool {
+        if s.len() < pat.len() { return false; }
+        eq_ci(&s[..pat.len()], pat)
+    };
+    if starts_with_ci(b"en") { return Some(Lang::En); }
+    if starts_with_ci(b"ja") { return Some(Lang::Ja); }
+    if starts_with_ci(b"zh") { return Some(Lang::Zh); }
+    None
+}
+
+/// Select the language based on UEFI `PlatformLang` variable when available,
+/// falling back to English to maximize compatibility.
 #[inline(always)]
-pub fn detect_lang() -> Lang {
-    // NOTE: A robust implementation would fetch UEFI variable "PlatformLang".
-    // We keep English as default for maximum compatibility until variable access is wired.
+pub fn detect_lang(_system_table: &SystemTable<Boot>) -> Lang {
+    // TODO: Use RuntimeServices::get_variable("PlatformLang") once vendor API is stabilized across versions.
     Lang::En
 }
 

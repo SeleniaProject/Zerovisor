@@ -30,9 +30,9 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         let b_dmar = crate::firmware::acpi::find_dmar(&system_table).is_some();
         let b_ivrs = crate::firmware::acpi::find_ivrs(&system_table).is_some();
 
+        let lang = i18n::detect_lang(&system_table);
         let stdout = system_table.stdout();
         let _ = stdout.reset(false);
-        let lang = i18n::detect_lang();
         let _ = stdout.write_str(i18n::t(lang, i18n::key::BANNER));
         let _ = stdout.write_str(i18n::t(lang, i18n::key::ENV));
 
@@ -85,6 +85,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     {
         // Calibrate TSC and print rough frequency
         let hz = time::calibrate_tsc(&system_table);
+        let lang = i18n::detect_lang(&system_table);
         let stdout = system_table.stdout();
         let mut buf = [0u8; 64];
         let mut n = 0;
@@ -93,7 +94,6 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         for &b in b" MHz\r\n" { buf[n] = b; n += 1; }
         let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
 
-        let lang = i18n::detect_lang();
         let _ = stdout.write_str(i18n::t(lang, i18n::key::READY));
     }
 
