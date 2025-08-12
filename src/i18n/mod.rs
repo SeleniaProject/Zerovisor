@@ -16,6 +16,8 @@ pub enum Lang {
 /// default to English to maximize compatibility.
 #[inline(always)]
 pub fn detect_lang() -> Lang {
+    // NOTE: A robust implementation would fetch UEFI variable "PlatformLang".
+    // We keep English as default for maximum compatibility until variable access is wired.
     Lang::En
 }
 

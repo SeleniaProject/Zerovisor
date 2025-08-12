@@ -91,7 +91,7 @@ fn slice_from_phys<T>(phys: u64, _len: usize) -> Option<&'static T> {
 }
 
 /// Locate RSDP via UEFI Configuration Table. Prefers ACPI 2.0+ GUID.
-pub fn find_rsdp(system_table: &SystemTable<Boot>) -> Option<Rsdp20> {
+pub(crate) fn find_rsdp(system_table: &SystemTable<Boot>) -> Option<Rsdp20> {
     for entry in system_table.config_table() {
         if entry.guid == ACPI2_GUID || entry.guid == ACPI_GUID {
             let phys = entry.address as u64;
@@ -110,7 +110,7 @@ pub fn find_rsdp(system_table: &SystemTable<Boot>) -> Option<Rsdp20> {
 }
 
 /// Iterate XSDT entries and yield SDT headers.
-pub fn iter_xsdt(xsdt_phys: u64) -> impl Iterator<Item = &'static SdtHeader> {
+pub(crate) fn iter_xsdt(xsdt_phys: u64) -> impl Iterator<Item = &'static SdtHeader> {
     struct Iter { base: &'static Xsdt, count: usize, idx: usize }
     impl Iterator for Iter {
         type Item = &'static SdtHeader;
@@ -133,7 +133,7 @@ pub fn iter_xsdt(xsdt_phys: u64) -> impl Iterator<Item = &'static SdtHeader> {
 }
 
 /// Finds first table by 4-byte signature in XSDT, falling back to RSDT.
-pub fn find_table(system_table: &SystemTable<Boot>, sig: [u8; 4]) -> Option<&'static SdtHeader> {
+pub(crate) fn find_table(system_table: &SystemTable<Boot>, sig: [u8; 4]) -> Option<&'static SdtHeader> {
     let rsdp = find_rsdp(system_table)?;
     if rsdp.xsdt_address != 0 {
         for hdr in iter_xsdt(rsdp.xsdt_address) {
@@ -158,25 +158,25 @@ pub fn find_table(system_table: &SystemTable<Boot>, sig: [u8; 4]) -> Option<&'st
     None
 }
 
-pub fn find_madt(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
+pub(crate) fn find_madt(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
     find_table(system_table, SIG_MADT)
 }
 
-pub fn find_fadt(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
+pub(crate) fn find_fadt(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
     find_table(system_table, SIG_FADT)
 }
 
-pub fn find_mcfg(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
+pub(crate) fn find_mcfg(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
     find_table(system_table, SIG_MCFG)
 }
 
 /// Find Intel VT-d remapping table (DMAR) if present.
-pub fn find_dmar(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
+pub(crate) fn find_dmar(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
     find_table(system_table, SIG_DMAR)
 }
 
 /// Find AMD I/O virtualization reporting table (IVRS) if present.
-pub fn find_ivrs(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
+pub(crate) fn find_ivrs(system_table: &SystemTable<Boot>) -> Option<&'static SdtHeader> {
     find_table(system_table, SIG_IVRS)
 }
 
@@ -190,7 +190,7 @@ pub(crate) struct MadtHeader {
 }
 
 /// Enumerate CPU APIC IDs from MADT and print to the provided writer function.
-pub fn madt_list_cpus_from<F>(hdr: &'static SdtHeader, mut writer: F)
+pub(crate) fn madt_list_cpus_from<F>(hdr: &'static SdtHeader, mut writer: F)
 where
     F: FnMut(&str),
 {
@@ -266,7 +266,7 @@ pub(crate) fn u32_to_dec(mut v: u32, out: &mut [u8]) -> usize {
     }
     let mut tmp = [0u8; 10];
     let mut i = 0;
-    while v > 0 && i < tmp.len() { tmp[i] = (b'0' + (v % 10) as u8); v /= 10; i += 1; }
+    while v > 0 && i < tmp.len() { tmp[i] = b'0' + (v % 10) as u8; v /= 10; i += 1; }
     let mut n = 0;
     while i > 0 && n < out.len() { i -= 1; out[n] = tmp[i]; n += 1; }
     n
@@ -290,7 +290,7 @@ pub(crate) struct McfgAllocation {
 }
 
 /// Enumerate PCIe ECAM segments from MCFG and print via writer
-pub fn mcfg_list_segments_from<F>(hdr: &'static SdtHeader, mut writer: F)
+pub(crate) fn mcfg_list_segments_from<F>(hdr: &'static SdtHeader, mut writer: F)
 where
     F: FnMut(&str),
 {
@@ -319,7 +319,7 @@ where
     }
 }
 
-fn u64_to_hex(mut v: u64, out: &mut [u8]) -> usize {
+fn u64_to_hex(v: u64, out: &mut [u8]) -> usize {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut started = false;
     let mut n = 0;

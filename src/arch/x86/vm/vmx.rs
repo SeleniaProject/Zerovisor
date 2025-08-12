@@ -61,7 +61,7 @@ fn read_rflags() -> u64 {
 }
 
 #[inline(always)]
-fn u64_to_hex_buf(mut v: u64, out: &mut [u8]) -> usize {
+fn u64_to_hex_buf(v: u64, out: &mut [u8]) -> usize {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut started = false; let mut n = 0;
     for i in (0..16).rev() {
