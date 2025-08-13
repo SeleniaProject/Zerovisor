@@ -254,6 +254,12 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         }
     }
 
+    // Install a minimal IDT and enable interrupts after SMP sync
+    {
+        crate::arch::x86::idt::init();
+        crate::arch::x86::idt::sti();
+    }
+
     Status::SUCCESS
 }
 

@@ -6,5 +6,6 @@ pub mod vm;
 pub mod smp;
 pub mod lapic;
 pub mod trampoline;
+pub mod idt;
 
 
