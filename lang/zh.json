@@ -7,7 +7,19 @@
   "feat_ept": "功能: Intel EPT（提示）\r\n",
   "feat_npt": "功能: AMD NPT\r\n",
   "feat_vtd": "功能: Intel VT-d（ACPI DMAR）\r\n",
-  "feat_amdvi": "功能: AMD-Vi（ACPI IVRS）\r\n"
+  "feat_amdvi": "功能: AMD-Vi（ACPI IVRS）\r\n",
+  "hpet_present": "HPET: 已检测 base=0x",
+  "hpet_not_found": "HPET: 未找到\r\n",
+  "smp_expected": "SMP: 预期CPU数=",
+  "smp_observed": "SMP: 已观测AP ID数=",
+  "smp_pm_ok": "SMP: AP 保护模式就绪\r\n",
+  "smp_pm_ng": "SMP: AP 保护模式未就绪\r\n",
+  "smp_lm_ok": "SMP: AP 长模式就绪\r\n",
+  "smp_lm_ng": "SMP: AP 长模式未就绪\r\n",
+  "smp_lm_count": "SMP: AP 长模式计数=",
+  "smp_apic_byte": "SMP: AP APIC-ID(低1字节)=",
+  "smp_ap_ids": "SMP: AP ID列表=",
+  "smp_ready": "SMP: AP READY="
 }
 
 

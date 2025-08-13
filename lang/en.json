@@ -7,6 +7,18 @@
   "feat_ept": "Feature: Intel EPT (hint)\r\n",
   "feat_npt": "Feature: AMD NPT\r\n",
   "feat_vtd": "Feature: Intel VT-d (ACPI DMAR)\r\n",
-  "feat_amdvi": "Feature: AMD-Vi (ACPI IVRS)\r\n"
+  "feat_amdvi": "Feature: AMD-Vi (ACPI IVRS)\r\n",
+  "hpet_present": "HPET: present, base=0x",
+  "hpet_not_found": "HPET: not found\r\n",
+  "smp_expected": "SMP: expected CPUs=",
+  "smp_observed": "SMP: observed AP IDs=",
+  "smp_pm_ok": "SMP: AP PM-entry OK\r\n",
+  "smp_pm_ng": "SMP: AP PM-entry not observed\r\n",
+  "smp_lm_ok": "SMP: AP LM-entry OK\r\n",
+  "smp_lm_ng": "SMP: AP LM-entry not observed\r\n",
+  "smp_lm_count": "SMP: AP LM-count=",
+  "smp_apic_byte": "SMP: AP APIC-ID(byte)=",
+  "smp_ap_ids": "SMP: AP IDs=",
+  "smp_ready": "SMP: AP READY="
 }
 

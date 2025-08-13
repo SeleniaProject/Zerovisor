@@ -7,6 +7,18 @@
   "feat_ept": "機能: Intel EPT（示唆）\r\n",
   "feat_npt": "機能: AMD NPT\r\n",
   "feat_vtd": "機能: Intel VT-d（ACPI DMAR）\r\n",
-  "feat_amdvi": "機能: AMD-Vi（ACPI IVRS）\r\n"
+  "feat_amdvi": "機能: AMD-Vi（ACPI IVRS）\r\n",
+  "hpet_present": "HPET: 検出 base=0x",
+  "hpet_not_found": "HPET: 見つかりません\r\n",
+  "smp_expected": "SMP: 期待CPU数=",
+  "smp_observed": "SMP: 観測AP ID数=",
+  "smp_pm_ok": "SMP: AP 保護モード到達 OK\r\n",
+  "smp_pm_ng": "SMP: AP 保護モード未到達\r\n",
+  "smp_lm_ok": "SMP: AP 長モード到達 OK\r\n",
+  "smp_lm_ng": "SMP: AP 長モード未到達\r\n",
+  "smp_lm_count": "SMP: AP 長モード回数=",
+  "smp_apic_byte": "SMP: AP APIC-ID(下位1B)=",
+  "smp_ap_ids": "SMP: AP ID配列=",
+  "smp_ready": "SMP: AP READY="
 }
 
