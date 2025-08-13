@@ -20,8 +20,11 @@ pub fn control_msrs_masks(msr_val: u64) -> (u32, u32) {
 /// Compute a control value that satisfies allowed-0/allowed-1 constraints given a desired mask.
 #[inline(always)]
 pub fn satisfy_controls(desired: u32, allowed_0: u32, allowed_1: u32) -> u32 {
-    // Set all must-be-one bits, clear must-be-zero bits, keep desired bits where allowed
-    (desired | allowed_1) & allowed_0
+    // Intel SDM: low 32 = allowed-0 (bit=1 means 0 allowed), high 32 = allowed-1 (bit=1 means 1 allowed)
+    // A safe composition is: (desired | must_be_one) & allowed_one
+    let must_be_one: u32 = !allowed_0;
+    let allowed_one: u32 = allowed_1;
+    (desired | must_be_one) & allowed_one
 }
 
 /// Allocate a 4KiB VMCS region and write the revision ID at the first 31 bits.
@@ -40,6 +43,35 @@ pub fn alloc_vmcs_region(system_table: &uefi::table::SystemTable<uefi::prelude::
 /// Free a previously allocated VMCS region.
 pub fn free_vmcs_region(system_table: &uefi::table::SystemTable<uefi::prelude::Boot>, ptr: *mut u8) {
     crate::mm::uefi::free_pages(system_table, ptr, 1);
+}
+
+// --- VMCS field encodings (subset) ---
+
+/// Primary processor-based VM-execution controls
+pub const VMCS_PROCBASED_CTLS: u64 = 0x0000_4002;
+/// Secondary processor-based VM-execution controls
+pub const VMCS_SECONDARY_CTLS: u64 = 0x0000_401E;
+/// EPT pointer (EPTP), 64-bit field
+pub const VMCS_EPT_POINTER: u64 = 0x0000_201A;
+
+/// Write a VMCS field; returns Ok if VMwrite succeeds (no CF/ZF).
+#[inline(always)]
+pub fn vmwrite(field: u64, value: u64) -> Result<(), &'static str> {
+    let mut rflags: u64;
+    unsafe {
+        core::arch::asm!(
+            "vmwrite {val}, {fld}"
+            , fld = in(reg) field
+            , val = in(reg) value
+            , options(nostack, preserves_flags)
+        );
+        // Read back RFLAGS to check CF/ZF. Use pushfq/pop to a register.
+        core::arch::asm!("pushfq; pop {}", out(reg) rflags, options(nostack, preserves_flags));
+    }
+    let cf = (rflags & 0x1) != 0;
+    let zf = (rflags & 0x40) != 0;
+    if cf || zf { return Err("vmwrite failed"); }
+    Ok(())
 }
 
 

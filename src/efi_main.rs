@@ -134,6 +134,9 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     let stdout = system_table.stdout();
                     if vmcs_ok { let _ = stdout.write_str("VMX: VMCS VMPTRLD/VMCLEAR smoke test OK\r\n"); }
                     else { let _ = stdout.write_str("VMX: VMCS smoke test skipped/failed\r\n"); }
+
+                    // Attempt to set EPTP in VMCS to verify EPT plumbing (non-launch)
+                    let _ = vmx::vmx_ept_smoke_test(&system_table);
                 }
             }
             vm::Vendor::Amd => {

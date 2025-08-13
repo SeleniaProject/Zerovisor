@@ -204,4 +204,77 @@ pub fn vmx_vmcs_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude
     Ok(())
 }
 
+/// Configure VMCS controls to enable secondary controls and EPT, and set EPTP.
+pub fn vmx_ept_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude::Boot>) -> Result<(), &'static str> {
+    if !vmx_preflight_available() { return Err("VMX not available"); }
+    if let Err(e) = feature_control_allows_vmx() { return Err(e); }
+
+    // Allocate VMXON and VMCS regions
+    let vmx_basic = unsafe { crate::arch::x86::msr::rdmsr(0x480) };
+    let rev_id: u32 = (vmx_basic & 0x7FFF_FFFF) as u32;
+    let vmxon = crate::mm::uefi::alloc_pages(system_table, 1, uefi::table::boot::MemoryType::LOADER_DATA)
+        .ok_or("alloc VMXON failed")?;
+    let vmcs = crate::arch::x86::vm::vmcs::alloc_vmcs_region(system_table).ok_or("alloc VMCS failed")?;
+    unsafe { core::ptr::write_bytes(vmxon, 0, 4096); core::ptr::write_unaligned(vmxon as *mut u32, rev_id); }
+
+    // Save and adjust CR0/CR4 and set CR4.VMXE
+    let mut cr0: u64; let mut cr4: u64;
+    unsafe {
+        core::arch::asm!("mov {}, cr0", out(reg) cr0, options(nostack, preserves_flags));
+        core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nostack, preserves_flags));
+    }
+    let (cr0a, mut cr4a) = vmx_adjust_cr0_cr4(cr0, cr4);
+    cr4a |= 1 << 13; // CR4.VMXE
+    unsafe {
+        core::arch::asm!("mov cr0, {}", in(reg) cr0a, options(nostack, preserves_flags));
+        core::arch::asm!("mov cr4, {}", in(reg) cr4a, options(nostack, preserves_flags));
+    }
+
+    // Enter VMX root and load VMCS
+    let vmxon_phys = vmxon as u64;
+    unsafe { core::arch::asm!("vmxon [{}]", in(reg) &vmxon_phys); }
+    let vmcs_phys = vmcs as u64;
+    unsafe { core::arch::asm!("vmptrld [{}]", in(reg) &vmcs_phys); }
+
+    // Read control MSRs
+    let pri_ctl_msr = unsafe { crate::arch::x86::msr::rdmsr(0x482) };
+    let sec_ctl_msr = unsafe { crate::arch::x86::msr::rdmsr(0x48B) };
+    let (pri_allowed0, pri_allowed1) = ((pri_ctl_msr as u32), (pri_ctl_msr >> 32) as u32);
+    let (sec_allowed0, sec_allowed1) = ((sec_ctl_msr as u32), (sec_ctl_msr >> 32) as u32);
+
+    // Desired: activate secondary controls (bit 31) in primary controls
+    let desired_pri: u32 = 1u32 << 31;
+    let adj_pri = crate::arch::x86::vm::vmcs::satisfy_controls(desired_pri, pri_allowed0, pri_allowed1);
+    crate::arch::x86::vm::vmcs::vmwrite(crate::arch::x86::vm::vmcs::VMCS_PROCBASED_CTLS, adj_pri as u64)?;
+
+    // Desired: enable EPT (bit 1) in secondary controls
+    let desired_sec: u32 = 1u32 << 1;
+    let adj_sec = crate::arch::x86::vm::vmcs::satisfy_controls(desired_sec, sec_allowed0, sec_allowed1);
+    crate::arch::x86::vm::vmcs::vmwrite(crate::arch::x86::vm::vmcs::VMCS_SECONDARY_CTLS, adj_sec as u64)?;
+
+    // Build minimal EPT and set EPTP
+    if let Some(pml4) = crate::mm::ept::build_identity_2m(system_table, 1u64 << 30) {
+        let eptp = crate::mm::ept::eptp_from_pml4(pml4 as u64);
+        crate::arch::x86::vm::vmcs::vmwrite(crate::arch::x86::vm::vmcs::VMCS_EPT_POINTER, eptp)?;
+        let stdout = system_table.stdout();
+        let _ = stdout.write_str("VMX: EPTP set (identity 1GiB, 2MiB pages)\r\n");
+    } else {
+        let stdout = system_table.stdout();
+        let _ = stdout.write_str("VMX: EPT build failed\r\n");
+    }
+
+    // Cleanup: VMCLEAR and VMXOFF
+    unsafe { core::arch::asm!("vmclear [{}]", in(reg) &vmcs_phys); }
+    unsafe { core::arch::asm!("vmxoff"); }
+    // Restore CRs
+    unsafe {
+        core::arch::asm!("mov cr0, {}", in(reg) cr0, options(nostack, preserves_flags));
+        core::arch::asm!("mov cr4, {}", in(reg) cr4, options(nostack, preserves_flags));
+    }
+    // Free memory
+    crate::mm::uefi::free_pages(system_table, vmcs, 1);
+    crate::mm::uefi::free_pages(system_table, vmxon, 1);
+    Ok(())
+}
+
 
