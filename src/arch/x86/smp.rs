@@ -46,14 +46,14 @@ pub fn start_aps_init_sipi(system_table: &SystemTable<Boot>, lapic_base: usize, 
             if etype == 0 && elen >= 8 {
                 let apic_id = unsafe { p.add(3).read() } as u32;
                 if apic_id != bsp_apic {
-                    crate::arch::x86::lapic::send_init(lapic_base, apic_id);
+                    crate::arch::x86::lapic::send_init_auto(lapic_base, apic_id);
                     crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
                     // Small wait (~10ms) via UEFI Stall
                     let _ = system_table.boot_services().stall(10_000);
-                    crate::arch::x86::lapic::send_sipi(lapic_base, apic_id, vec);
+                    crate::arch::x86::lapic::send_sipi_auto(lapic_base, apic_id, vec);
                     crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
                     let _ = system_table.boot_services().stall(200);
-                    crate::arch::x86::lapic::send_sipi(lapic_base, apic_id, vec);
+                    crate::arch::x86::lapic::send_sipi_auto(lapic_base, apic_id, vec);
                     crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
                 }
             }

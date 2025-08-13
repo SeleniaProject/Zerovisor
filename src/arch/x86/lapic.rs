@@ -109,4 +109,37 @@ pub fn try_enable_x2apic() -> bool {
     true
 }
 
+/// Returns true if IA32_APIC_BASE indicates x2APIC enabled.
+pub fn is_x2apic_enabled() -> bool {
+    let v = unsafe { crate::arch::x86::msr::rdmsr(0x1B) };
+    (v & (1 << 10)) != 0
+}
+
+/// Send INIT via x2APIC MSR ICR (0x830) to target APIC ID.
+fn send_init_x2apic(apic_id: u32) {
+    // x2APIC ICR is 64-bit: [63:32] dest, [31:0] low with delivery mode/shorthand
+    let low = (ICR_DM_INIT | (1 << 14)) as u64; // assert INIT
+    let icr = ((apic_id as u64) << 32) | low;
+    unsafe { crate::arch::x86::msr::wrmsr(0x830, icr); }
+}
+
+/// Send SIPI via x2APIC MSR ICR to target APIC ID with vector.
+fn send_sipi_x2apic(apic_id: u32, vector: u8) {
+    let low = (ICR_DM_STARTUP | (vector as u32)) as u64;
+    let icr = ((apic_id as u64) << 32) | low;
+    unsafe { crate::arch::x86::msr::wrmsr(0x830, icr); }
+}
+
+/// Auto path: send INIT using x2APIC if enabled, else xAPIC MMIO.
+pub fn send_init_auto(lapic_base: usize, apic_id: u32) {
+    if is_x2apic_enabled() { send_init_x2apic(apic_id); }
+    else { send_init(lapic_base, apic_id); }
+}
+
+/// Auto path: send SIPI using x2APIC if enabled, else xAPIC MMIO.
+pub fn send_sipi_auto(lapic_base: usize, apic_id: u32, vector: u8) {
+    if is_x2apic_enabled() { send_sipi_x2apic(apic_id, vector); }
+    else { send_sipi(lapic_base, apic_id, vector); }
+}
+
 
