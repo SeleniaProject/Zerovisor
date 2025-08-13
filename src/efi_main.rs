@@ -73,12 +73,9 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                 if madt { let _ = stdout.write_str("ACPI: MADT found\r\n"); }
                 if mcfg { let _ = stdout.write_str("ACPI: MCFG found\r\n"); }
             }
-            // Enumerate CPUs from MADT
+            // Enumerate CPUs via SMP module (MADT-based)
             if madt {
-                if let Some(madt_hdr) = acpi::find_madt(&system_table) {
-                    let stdout = system_table.stdout();
-                    acpi::madt_list_cpus_from(madt_hdr, |s| { let _ = stdout.write_str(s); });
-                }
+                crate::arch::x86::smp::enumerate_and_report(&system_table);
             }
             // Enumerate PCIe ECAM segments from MCFG
             if mcfg {
@@ -95,8 +92,12 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     }
 
     {
-        // Calibrate TSC and print rough frequency
-        let hz = time::calibrate_tsc(&system_table);
+        // Report HPET presence and nominal frequency if available
+        time::hpet::report_hpet(&system_table);
+
+        // Detect invariant TSC and calibrate; cache the result
+        let inv = arch::x86::cpuid::has_invariant_tsc();
+        let hz = time::init_time(&system_table);
         let lang = i18n::detect_lang(&system_table);
         let stdout = system_table.stdout();
         let mut buf = [0u8; 64];
@@ -105,6 +106,8 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         n += firmware::acpi::u32_to_dec((hz / 1_000_000) as u32, &mut buf[n..]);
         for &b in b" MHz\r\n" { buf[n] = b; n += 1; }
         let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+        // Log invariant TSC flag
+        let _ = stdout.write_str(if inv { "TSC: invariant\r\n" } else { "TSC: not invariant\r\n" });
 
         let _ = stdout.write_str(i18n::t(lang, i18n::key::READY));
     }
@@ -142,6 +145,43 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
             vm::Vendor::Unknown => {
                 let stdout = system_table.stdout();
                 let _ = stdout.write_str("CPU vendor: unknown\r\n");
+            }
+        }
+    }
+
+    // Minimal AP bring-up: prepare a real-mode trampoline and count AP wakeups.
+    {
+        if let Some(info) = crate::arch::x86::trampoline::prepare_real_mode_trampoline(&system_table) {
+            // LAPIC base via MSR if possible; fall back to MADT
+            let mut lapic_base = crate::arch::x86::lapic::apic_base_via_msr();
+            if lapic_base.is_none() {
+                if let Some(madt_hdr) = crate::firmware::acpi::find_madt(&system_table) {
+                    let madt = madt_hdr as *const crate::firmware::acpi::SdtHeader as *const crate::firmware::acpi::MadtHeader;
+                    lapic_base = Some(unsafe { (*madt).lapic_addr as usize });
+                }
+            }
+            if let Some(lapic_base) = lapic_base {
+                // Send INIT + SIPIs to APs
+                crate::arch::x86::smp::start_aps_init_sipi(&system_table, lapic_base, info.phys_base);
+                // Wait for APs to tick the mailbox with a timeout (~100ms)
+                let mut waited_us: u64 = 0;
+                let start_count = crate::arch::x86::trampoline::read_mailbox_count(info);
+                loop {
+                    let now = crate::arch::x86::trampoline::read_mailbox_count(info);
+                    if now != start_count { break; }
+                    if waited_us >= 100_000 { break; }
+                    let _ = system_table.boot_services().stall(1000);
+                    waited_us += 1000;
+                }
+                // Report mailbox count
+                let stdout = system_table.stdout();
+                let mut buf = [0u8; 64];
+                let mut n = 0;
+                for &b in b"SMP: AP wakeups (mailbox count)=" { buf[n] = b; n += 1; }
+                let cnt = crate::arch::x86::trampoline::read_mailbox_count(info) as u32;
+                n += crate::firmware::acpi::u32_to_dec(cnt, &mut buf[n..]);
+                buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
+                let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
             }
         }
     }
