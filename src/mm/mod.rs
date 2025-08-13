@@ -2,5 +2,6 @@
 
 pub mod uefi;
 pub mod ept;
+pub mod npt;
 
 
