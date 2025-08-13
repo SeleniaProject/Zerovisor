@@ -15,7 +15,7 @@ pub enum Lang {
 
 use uefi::prelude::Boot;
 use uefi::table::SystemTable;
-// use uefi::cstr16; // Reserved for future use when reading PlatformLang
+// use uefi::cstr16; // not used in current stub implementation
 
 /// Try to parse UEFI `PlatformLang` (RFC 3066 like "en-US", "ja-JP", "zh-CN").
 #[allow(dead_code)]
@@ -57,7 +57,7 @@ fn parse_platform_lang_ascii(bytes: &[u8]) -> Option<Lang> {
 /// falling back to English to maximize compatibility.
 #[inline(always)]
 pub fn detect_lang(_system_table: &SystemTable<Boot>) -> Lang {
-    // TODO: Use RuntimeServices::get_variable("PlatformLang") once vendor API is stabilized across versions.
+    // Fallback to English for stability; PlatformLang retrieval differs per crate version.
     Lang::En
 }
 
