@@ -179,7 +179,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     let _ = system_table.boot_services().stall(1000);
                     waited_us += 1000;
                 }
-                // Report mailbox count
+                // Report mailbox count and expected CPUs
                 let stdout = system_table.stdout();
                 let mut buf = [0u8; 64];
                 let mut n = 0;
@@ -188,6 +188,15 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                 n += crate::firmware::acpi::u32_to_dec(cnt, &mut buf[n..]);
                 buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
                 let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+                if let Some(madt_hdr2) = acpi::find_madt(&system_table) {
+                    let expected = acpi::madt_count_logical_cpus_from(madt_hdr2);
+                    let mut b2 = [0u8; 64];
+                    let mut m2 = 0;
+                    for &b in b"SMP: expected CPUs=" { b2[m2] = b; m2 += 1; }
+                    m2 += crate::firmware::acpi::u32_to_dec(expected, &mut b2[m2..]);
+                    b2[m2] = b'\r'; m2 += 1; b2[m2] = b'\n'; m2 += 1;
+                    let _ = stdout.write_str(core::str::from_utf8(&b2[..m2]).unwrap_or("\r\n"));
+                }
 
                 // Report PM/LM success flags
                 let pm_ok = crate::arch::x86::trampoline::read_mailbox_pm_ok(info);

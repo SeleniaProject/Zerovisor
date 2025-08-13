@@ -258,6 +258,35 @@ where
     writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
 }
 
+/// Count logical CPUs from MADT (Local APIC and x2APIC entries).
+pub(crate) fn madt_count_logical_cpus_from(hdr: &'static SdtHeader) -> u32 {
+    let madt = hdr as *const SdtHeader as *const MadtHeader;
+    let madt = unsafe { &*madt };
+    let base = madt as *const MadtHeader as usize;
+    let total_len = madt.header.length as usize;
+    let mut off = core::mem::size_of::<MadtHeader>();
+    let mut count: u32 = 0;
+    while off + 2 <= total_len {
+        let p = (base + off) as *const u8;
+        let etype = unsafe { p.read() };
+        let elen = unsafe { p.add(1).read() } as usize;
+        if elen < 2 || off + elen > total_len { break; }
+        match etype {
+            0 => {
+                // Processor Local APIC
+                if elen >= 8 { count = count.saturating_add(1); }
+            }
+            9 => {
+                // Processor Local x2APIC
+                if elen >= 16 { count = count.saturating_add(1); }
+            }
+            _ => {}
+        }
+        off += elen;
+    }
+    count
+}
+
 pub(crate) fn u32_to_dec(mut v: u32, out: &mut [u8]) -> usize {
     // write decimal to buffer; returns number of bytes written
     if v == 0 {
