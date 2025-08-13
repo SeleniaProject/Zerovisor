@@ -15,6 +15,8 @@ pub mod leaf {
 
     /// AMD SVM features (EAX=0x8000000A).
     pub const AMD_SVM: u32 = 0x8000_000A;
+    /// Advanced Power Management Information (EAX=0x80000007).
+    pub const AMD_APM: u32 = 0x8000_0007;
 }
 
 /// Result of a `cpuid` call.
@@ -68,6 +70,13 @@ pub fn has_npt() -> bool {
     // According to AMD64 APM Vol.3, SVM feature identification.
     let r = cpuid(leaf::AMD_SVM, 0);
     (r.edx & (1 << 0)) != 0
+}
+
+/// Indicates presence of Invariant TSC via CPUID.80000007:EDX[8].
+#[inline(always)]
+pub fn has_invariant_tsc() -> bool {
+    let r = cpuid(leaf::AMD_APM, 0);
+    (r.edx & (1 << 8)) != 0
 }
 
 
