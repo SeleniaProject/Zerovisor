@@ -194,6 +194,17 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                 let lm_ok = crate::arch::x86::trampoline::read_mailbox_lm_ok(info);
                 let _ = stdout.write_str(if pm_ok { "SMP: AP PM-entry OK\r\n" } else { "SMP: AP PM-entry not observed\r\n" });
                 let _ = stdout.write_str(if lm_ok { "SMP: AP LM-entry OK\r\n" } else { "SMP: AP LM-entry not observed\r\n" });
+                // If LM reached, also print the LM entry hit count at mailbox+6..+7
+                if lm_ok {
+                    let base = info.phys_base as usize + info.mailbox_offset as usize;
+                    let cnt16 = unsafe { core::ptr::read_volatile((base + 6) as *const u16) } as u32;
+                    let mut buf2 = [0u8; 64];
+                    let mut m = 0;
+                    for &b in b"SMP: AP LM-count=" { buf2[m] = b; m += 1; }
+                    m += crate::firmware::acpi::u32_to_dec(cnt16, &mut buf2[m..]);
+                    buf2[m] = b'\r'; m += 1; buf2[m] = b'\n'; m += 1;
+                    let _ = stdout.write_str(core::str::from_utf8(&buf2[..m]).unwrap_or("\r\n"));
+                }
             }
         }
     }

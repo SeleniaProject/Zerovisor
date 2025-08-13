@@ -166,19 +166,29 @@ pub fn prepare_real_mode_trampoline(system_table: &SystemTable<Boot>) -> Option<
         core::ptr::write_volatile(p64.add(6) as *mut u8, 0x20u8); // gran: L=1
         core::ptr::write_volatile(p64.add(7) as *mut u8, 0u8); // base high
     }
-    // Write tiny 64-bit code at lm_entry_off: mov byte [rip+disp32],1 ; hlt ; jmp $
+    // Write tiny 64-bit code at lm_entry_off:
+    //   mov byte [rip+disp32_to_mailbox_plus_5], 1
+    //   inc word [rip+disp32_to_mailbox_plus_6]
+    //   hlt
+    //   jmp $
     let lm_ptr = unsafe { page.add(lm_entry_off as usize) } as *mut u8;
-    let disp = (mailbox_off as i32 + 5) - (lm_entry_off as i32 + 6);
+    let disp5 = (mailbox_off as i32 + 5) - (lm_entry_off as i32 + 6);
+    let disp6 = (mailbox_off as i32 + 6) - (lm_entry_off as i32 + 7 + 6); // after 66 FF 05 disp32 (7 bytes ahead)
     unsafe {
         // C6 05 disp32 imm8
         core::ptr::write_volatile(lm_ptr.add(0), 0xC6u8);
         core::ptr::write_volatile(lm_ptr.add(1), 0x05u8);
-        core::ptr::write_volatile(lm_ptr.add(2) as *mut i32, disp);
+        core::ptr::write_volatile(lm_ptr.add(2) as *mut i32, disp5);
         core::ptr::write_volatile(lm_ptr.add(6), 0x01u8);
+        // 66 FF 05 disp32   (INC word [RIP+disp])
+        core::ptr::write_volatile(lm_ptr.add(7), 0x66u8);
+        core::ptr::write_volatile(lm_ptr.add(8), 0xFFu8);
+        core::ptr::write_volatile(lm_ptr.add(9), 0x05u8);
+        core::ptr::write_volatile(lm_ptr.add(10) as *mut i32, disp6);
         // hlt; jmp $
-        core::ptr::write_volatile(lm_ptr.add(7), 0xF4u8);
-        core::ptr::write_volatile(lm_ptr.add(8), 0xEBu8);
-        core::ptr::write_volatile(lm_ptr.add(9), 0xFEu8);
+        core::ptr::write_volatile(lm_ptr.add(14), 0xF4u8);
+        core::ptr::write_volatile(lm_ptr.add(15), 0xEBu8);
+        core::ptr::write_volatile(lm_ptr.add(16), 0xFEu8);
     }
     // Compute SIPI vector (page number >> 12 lower 8 bits)
     let phys = page as u64;
