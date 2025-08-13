@@ -399,6 +399,8 @@ pub(crate) fn dmar_list_structs_from(mut writer: impl FnMut(&str), hdr: &'static
         n += u32_to_dec(typ as u32, &mut buf[n..]);
         for &b in b" len=" { buf[n] = b; n += 1; }
         n += u32_to_dec(len as u32, &mut buf[n..]);
+        // Determine header size to locate optional device scope list
+        let mut header_size_for_scopes: usize = 0;
         match typ {
             0 => {
                 // DRHD: flags(1), rsvd(1), seg(2), reg_base(8)
@@ -414,6 +416,7 @@ pub(crate) fn dmar_list_structs_from(mut writer: impl FnMut(&str), hdr: &'static
                     n += u32_to_dec(seg, &mut buf[n..]);
                     for &b in b" reg=0x" { buf[n] = b; n += 1; }
                     n += u64_to_hex(addr, &mut buf[n..]);
+                    header_size_for_scopes = 4 + 12;
                 }
             }
             1 => {
@@ -431,6 +434,7 @@ pub(crate) fn dmar_list_structs_from(mut writer: impl FnMut(&str), hdr: &'static
                     n += u64_to_hex(base64, &mut buf[n..]);
                     for &b in b"-0x" { buf[n] = b; n += 1; }
                     n += u64_to_hex(limit64, &mut buf[n..]);
+                    header_size_for_scopes = 4 + 20;
                 }
             }
             2 => {
@@ -444,12 +448,36 @@ pub(crate) fn dmar_list_structs_from(mut writer: impl FnMut(&str), hdr: &'static
                     n += u32_to_dec(seg, &mut buf[n..]);
                     for &b in b" flags=0x" { buf[n] = b; n += 1; }
                     n += u64_to_hex(flags as u64, &mut buf[n..]);
+                    header_size_for_scopes = 8;
                 }
             }
             _ => {}
         }
         buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
         writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+        // If this structure carries a device scope list, enumerate shallow info
+        if header_size_for_scopes > 0 && header_size_for_scopes < len {
+            let mut s_off = off + header_size_for_scopes;
+            let end = off + len;
+            while s_off + 6 <= end {
+                let sp = (base + s_off) as *const u8;
+                let s_type = unsafe { sp.read() } as u32;
+                let s_len = (unsafe { sp.add(1).read() } as u32) | ((unsafe { sp.add(2).read() } as u32) << 8);
+                if s_len < 6 || s_off + (s_len as usize) > end { break; }
+                let bus = unsafe { sp.add(4).read() } as u32; // start bus number
+                let mut lbuf = [0u8; 96];
+                let mut m = 0;
+                for &b in b"DMAR:   scope type=" { lbuf[m] = b; m += 1; }
+                m += u32_to_dec(s_type, &mut lbuf[m..]);
+                for &b in b" len=" { lbuf[m] = b; m += 1; }
+                m += u32_to_dec(s_len, &mut lbuf[m..]);
+                for &b in b" bus=" { lbuf[m] = b; m += 1; }
+                m += u32_to_dec(bus, &mut lbuf[m..]);
+                lbuf[m] = b'\r'; m += 1; lbuf[m] = b'\n'; m += 1;
+                writer(core::str::from_utf8(&lbuf[..m]).unwrap_or("\r\n"));
+                s_off += s_len as usize;
+            }
+        }
         off += len;
     }
 }
