@@ -124,6 +124,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     }
                     // Report VMX control MSRs
                     vmx::vmx_report_controls(&mut system_table);
+                    vmx::vmx_report_ept_vpid_cap(&mut system_table);
                     let vmx_ok = vmx::vmx_smoke_test(&system_table).is_ok();
                     let stdout = system_table.stdout();
                     if vmx_ok { let _ = stdout.write_str("VMX: VMXON/VMXOFF smoke test OK\r\n"); }

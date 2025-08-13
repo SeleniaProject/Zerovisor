@@ -96,6 +96,25 @@ pub fn vmx_report_controls(system_table: &mut uefi::table::SystemTable<uefi::pre
     }
 }
 
+/// Read IA32_VMX_EPT_VPID_CAP and print a brief capability summary.
+pub fn vmx_report_ept_vpid_cap(system_table: &mut uefi::table::SystemTable<uefi::prelude::Boot>) {
+    let cap = unsafe { crate::arch::x86::msr::rdmsr(0x48C) };
+    let stdout = system_table.stdout();
+    // Print raw value
+    let mut buf = [0u8; 96];
+    let mut n = 0;
+    for &b in b"VMX MSR EPT_VPID_CAP=0x" { buf[n] = b; n += 1; }
+    n += crate::util::format::u64_hex(cap, &mut buf[n..]);
+    buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
+    let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+
+    // Minimal decode: large page support flags commonly used (bit positions from SDM)
+    let ept_2m = (cap & (1 << 16)) != 0;
+    let ept_1g = (cap & (1 << 17)) != 0;
+    if ept_2m { let _ = stdout.write_str("EPT: 2MiB pages supported\r\n"); }
+    if ept_1g { let _ = stdout.write_str("EPT: 1GiB pages supported\r\n"); }
+}
+
 /// Attempt VMXON then VMXOFF for a smoke test using UEFI page allocation.
 pub fn vmx_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude::Boot>) -> Result<(), &'static str> {
     if !vmx_preflight_available() { return Err("VMX not available"); }
