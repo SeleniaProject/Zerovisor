@@ -76,4 +76,10 @@ pub fn read_mailbox_count(info: TrampolineInfo) -> u16 {
     unsafe { core::ptr::read_volatile(p) }
 }
 
+/// Build a minimal long-mode bootstrap page tables and provide CR3 value for APs.
+pub fn build_ap_long_mode_tables(system_table: &SystemTable<Boot>, limit_bytes: u64) -> Option<u64> {
+    let pml4 = crate::mm::paging::build_identity_2m(system_table, limit_bytes)?;
+    Some(pml4 as u64)
+}
+
 

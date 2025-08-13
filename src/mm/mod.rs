@@ -3,5 +3,6 @@
 pub mod uefi;
 pub mod ept;
 pub mod npt;
+pub mod paging;
 
 

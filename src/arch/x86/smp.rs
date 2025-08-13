@@ -62,4 +62,14 @@ pub fn start_aps_init_sipi(system_table: &SystemTable<Boot>, lapic_base: usize, 
     }
 }
 
+/// Prepare paging for APs and write CR3 value into a shared mailbox area.
+/// For now, we colocate CR3 value right after the counter (offset + 2).
+pub fn write_ap_cr3_mailbox(system_table: &SystemTable<Boot>, trampoline_phys_page: u64, limit_bytes: u64) {
+    if let Some(cr3) = crate::arch::x86::trampoline::build_ap_long_mode_tables(system_table, limit_bytes) {
+        // counter at 0x800, CR3 at 0x802..0x809
+        let ptr = (trampoline_phys_page as usize + 0x802) as *mut u64;
+        unsafe { core::ptr::write_volatile(ptr, cr3); }
+    }
+}
+
 
