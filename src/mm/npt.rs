@@ -14,6 +14,7 @@ const NPT_READ: u64 = 1 << 0;
 const NPT_WRITE: u64 = 1 << 1;
 const NPT_EXEC: u64 = 1 << 2;
 const NPT_PAGE_SIZE: u64 = 1 << 7; // For PDE large pages
+const NPT_PTE_PRESENT: u64 = NPT_READ | NPT_WRITE | NPT_EXEC;
 
 /// Allocate a zeroed page and return as 64-bit entry pointer.
 fn alloc_zeroed_page(system_table: &SystemTable<Boot>) -> Option<*mut u64> {
@@ -44,6 +45,57 @@ pub fn build_identity_2m(system_table: &SystemTable<Boot>, limit_bytes: u64) -> 
                 *pde = entry;
                 phys = phys.wrapping_add(2 * 1024 * 1024);
                 if phys >= limit_bytes { break; }
+            }
+        }
+    }
+    Some(pml4)
+}
+
+/// Build a minimal identity-mapped NPT up to `limit_bytes` using 1GiB pages.
+/// Returns the physical address (identity-assumed) of the PML4 table.
+pub fn build_identity_1g(system_table: &SystemTable<Boot>, limit_bytes: u64) -> Option<*mut u64> {
+    if limit_bytes == 0 { return None; }
+    let pml4 = alloc_zeroed_page(system_table)?;
+    let pdpt = alloc_zeroed_page(system_table)?;
+    unsafe {
+        *pml4 = (pdpt as u64) | NPT_PTE_PRESENT;
+        let num_gb = ((limit_bytes + (1 << 30) - 1) >> 30) as usize;
+        let mut phys: u64 = 0;
+        for i in 0..num_gb {
+            // PDPTE with 1GiB page (bit 7 set)
+            let entry = (phys & 0x000F_FFFF_C000_0000) | NPT_PTE_PRESENT | NPT_PAGE_SIZE;
+            *pdpt.add(i) = entry;
+            phys = phys.wrapping_add(1u64 << 30);
+            if phys >= limit_bytes { break; }
+        }
+    }
+    Some(pml4)
+}
+
+/// Build a minimal identity-mapped NPT up to `limit_bytes` using 4KiB pages.
+pub fn build_identity_4k(system_table: &SystemTable<Boot>, limit_bytes: u64) -> Option<*mut u64> {
+    if limit_bytes == 0 { return None; }
+    let pml4 = alloc_zeroed_page(system_table)?;
+    let pdpt = alloc_zeroed_page(system_table)?;
+    unsafe {
+        *pml4 = (pdpt as u64) | NPT_PTE_PRESENT;
+        let num_gb = ((limit_bytes + (1 << 30) - 1) >> 30) as usize;
+        for i in 0..num_gb {
+            let pd = alloc_zeroed_page(system_table)?;
+            *pdpt.add(i) = (pd as u64) | NPT_PTE_PRESENT;
+            let phys_1g_base: u64 = (i as u64) << 30;
+            for j in 0..512usize {
+                let pt = alloc_zeroed_page(system_table)?;
+                *pd.add(j) = (pt as u64) | NPT_PTE_PRESENT; // next level pointer
+                let mut phys = phys_1g_base.wrapping_add((j as u64) << 21);
+                for k in 0..512usize {
+                    let pte = pt.add(k);
+                    let entry = (phys & 0x000F_FFFF_FFFF_F000) | NPT_PTE_PRESENT;
+                    *pte = entry;
+                    phys = phys.wrapping_add(4096);
+                    if phys >= limit_bytes { break; }
+                }
+                if phys_1g_base.wrapping_add(((j + 1) as u64) << 21) >= limit_bytes { break; }
             }
         }
     }

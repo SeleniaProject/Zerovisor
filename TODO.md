@@ -50,24 +50,36 @@
 - [x] タスク: EPT/NPTテーブル生成（現状範囲）
   - 成果物: `src/mm/ept.rs`, `src/mm/npt.rs`
   - 目的: 二段変換の恒等マップ生成とEPTR/NCr3構成
-  - 現状: EPT=2M/1G対応、NPT=2M対応
-  - 未了: 4Kページ対応（EPT/NPT）、NPTの1G対応、A/Dビット運用、詳細属性
+  - 現状: EPT=4K/2M/1G対応、NPT=4K/2M/1G対応
+  - 未了: A/Dビット運用、詳細属性
   - 工数: 大
 
 ### フェーズ4: デバイス仮想化の基礎
-- [ ] タスク: VirtIOコンソール/ブロック/ネット（最小）
-  - 成果物: `src/virtio/*.rs`
+- [x] タスク: VirtIOコンソール/ブロック/ネット（最小）
+  - 成果物: `src/virtio/mod.rs`, `src/virtio/console.rs`, `src/virtio/block.rs`, `src/virtio/net.rs`
+  - 現状: ECAM走査・PCI Vendor Cap走査、virtio-consoleの最小ステータスハンドシェイク（ACK/DRIVER/DRIVER_OK）、virtio‑blk容量レポート、virtio‑net検出レポート
   - 工数: 大
-- [ ] タスク: VT‑d/AMD‑VI（IOMMU）初期化、デバイス保護ドメイン
+- [x] タスク: VT‑d/AMD‑VI（IOMMU）初期化、デバイス保護ドメイン
   - 成果物: `src/iommu/vtd.rs`, `src/iommu/amdv.rs`
+  - 現状/進捗:
+    - VT‑d: DRHD列挙、RTADDR設定＋SRTP確認、TEのenable/disable観測、Root/Contextテーブル生成、Context Entry設定（AW/TT/DID/SLPTPTR）、二次PT（4KiB/2MiB）マッピング、SRTP粒度invalidate（all/dom/bdf/hard）、検証/同期/翻訳/歩査/統計CLIを実装
+    - AMD‑Vi: IVRS検出・要約・エントリ列挙まで（最小初期化は未実装）
+  - 残: CCMD/IOTLBによる正式invalidate（CIRG/IIRG/ICC/IVT、DMAドレイン）実装、AMD‑Vi最小初期化（IVHD→MMIO→Device Table→有効化）
   - 工数: 大
+  - 備考: CLIによる管理プレーンからの観測・適用を重視（後述）
 
 ### フェーズ5: 管理プレーン最小機能
-- [ ] タスク: シリアル/UEFIコンソール経由CLI（最小）
+- [x] タスク: シリアル/UEFIコンソール経由CLI（最小）
   - 成果物: `src/ctl/cli.rs`
+  - 現状: `help|info|virtio|iommu|pci|vm|trace|metrics|quit` をサポート
   - 工数: 中
-- [ ] タスク: VM作成/起動/停止/削除の基本API
+  - 進捗（主要サブコマンド）:
+    - `iommu`: `info|units|root <bus>|lsctx <bus>|dump <bus:dev.func>|plan|plan dom=<id>|validate|verify|verify-map|xlate bdf=<seg:bus:dev.func> iova=<hex>|walk bdf=<seg:bus:dev.func> iova=<hex>|apply|apply-refresh|apply-safe|sync|invalidate|invalidate dom=<id>|invalidate bdf=<seg:bus:dev.func>|hard-invalidate|fsts|fclear|stats|summary`
+    - `dom`: `new|destroy <id>|purge <id>|seg:bus:dev.func assign <id>|seg:bus:dev.func unassign|list|map dom=<id> iova=<hex> pa=<hex> len=<hex> perm=[rwx]|unmap dom=<id> iova=<hex> len=<hex>|mappings|dump`
+    - `vm`: `new|start`
+- [x] タスク: VM作成/起動/停止/削除の基本API
   - 成果物: `src/hv/vm.rs`, `src/hv/vcpu.rs`
+  - 現状: VM生成ID付与、vCPU開始/停止、Intel=VMXスモーク+EPT接続、AMD=SVMプレフライト+NPT準備（VMLAUNCH相当は未実装）
   - 工数: 大
 
 ### フェーズ6: セキュリティと可用性強化
@@ -84,21 +96,21 @@
 - [ ] セキュリティ: W^X/SMEP/SMAPが有効、IOMMU無しのパススルーが禁止されていることを検証。
 
 ### 追加タスク（Observability & i18n）
-- [ ] タスク: 構造化ログ（レベル/カテゴリ/言語タグ）
-  - 成果物: `src/obs/log.rs`（設計）、ログフォーマット仕様書
+- [x] タスク: 構造化ログ（レベル/カテゴリ/言語タグ）
+  - 成果物: `src/obs/log.rs`（最小：UEFIコンソール出力、レベル/カテゴリ付与）
   - 工数: 中
-- [ ] タスク: メトリクス（カウンタ/ヒストグラム）
-  - 成果物: `src/obs/metrics.rs`（設計）、導入箇所一覧
+- [x] タスク: メトリクス（カウンタ/ヒストグラム）
+  - 成果物: `src/obs/metrics.rs`（最小：VM作成/開始カウンタ）
   - 工数: 中
-- [ ] タスク: トレース（VM‑Entry/Exit、EPT操作）
-  - 成果物: `src/obs/trace.rs`（設計）
+- [x] タスク: トレース（VM‑Entry/Exit、EPT操作）
+  - 成果物: `src/obs/trace.rs`（最小：リングバッファ、CLI `trace`でダンプ）
   - 工数: 中
 - [x] タスク: 多言語辞書（CLI/ログ）
   - 成果物: `lang/ja.json`, `lang/en.json`, `lang/zh.json`
   - 工数: 小
-- [ ] タスク: UEFI `PlatformLang` による動的言語選択
+- [x] タスク: UEFI `PlatformLang` による動的言語選択
   - 成果物: `src/i18n/mod.rs`
-  - 現状: 英語固定フォールバック（検出スタブあり）
+  - 実装: UEFI変数`PlatformLang`（EFI_GLOBAL_VARIABLE）を`RuntimeServices::get_variable`で取得し、`en`/`ja`/`zh`を動的選択（ASCII/RFC3066前方一致、静的バッファ、英語フォールバック）
   - 工数: 小
 
 ### パフォーマンス検証タスク（性能上限の可視化）

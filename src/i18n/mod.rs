@@ -1,6 +1,6 @@
 //! Minimal i18n message resolver.
 //!
-//! This module provides a tiny message table for English and Japanese with a
+//! This module provides a tiny message table for English/Japanese/Chinese with a
 //! stable set of keys used by the bootstrap. It avoids allocations and keeps
 //! string lifetimes static for UEFI text output.
 
@@ -15,7 +15,8 @@ pub enum Lang {
 
 use uefi::prelude::Boot;
 use uefi::table::SystemTable;
-// use uefi::cstr16; // not used in current stub implementation
+use uefi::table::runtime::VariableVendor;
+use uefi::{cstr16};
 
 /// Try to parse UEFI `PlatformLang` (RFC 3066 like "en-US", "ja-JP", "zh-CN").
 #[allow(dead_code)]
@@ -56,8 +57,22 @@ fn parse_platform_lang_ascii(bytes: &[u8]) -> Option<Lang> {
 /// Select the language based on UEFI `PlatformLang` variable when available,
 /// falling back to English to maximize compatibility.
 #[inline(always)]
-pub fn detect_lang(_system_table: &SystemTable<Boot>) -> Lang {
-    // Fallback to English for stability; PlatformLang retrieval differs per crate version.
+pub fn detect_lang(system_table: &SystemTable<Boot>) -> Lang {
+    // Read UEFI global variable: PlatformLang (CHAR8 RFC 3066 like "en-US")
+    // Name is a CHAR16 string, vendor GUID is EFI_GLOBAL_VARIABLE:
+    // 8BE4DF61-93CA-11D2-AA0D-00E098032B8C
+    let rs = system_table.runtime_services();
+    let name = cstr16!("PlatformLang");
+    let vendor = VariableVendor::GLOBAL_VARIABLE;
+
+    // Use a fixed buffer to avoid dynamic allocation in no_std.
+    // The value is a short ASCII token (e.g., "en-US").
+    let mut buf = [0u8; 128];
+    if let Ok((data, _attrs)) = rs.get_variable(name, &vendor, &mut buf) {
+        if let Some(l) = parse_platform_lang_ascii(data) { return l; }
+    }
+
+    // Final fallback to English.
     Lang::En
 }
 
@@ -84,6 +99,14 @@ pub mod key {
     pub const SMP_APIC_BYTE: &str = "smp_apic_byte";
     pub const SMP_AP_IDS: &str = "smp_ap_ids";
     pub const SMP_READY: &str = "smp_ready";
+    pub const VIRTIO_SCAN: &str = "virtio_scan";
+    pub const VIRTIO_NONE: &str = "virtio_none";
+    pub const IOMMU_VTD_NONE: &str = "iommu_vtd_none";
+    pub const IOMMU_AMDV_NONE: &str = "iommu_amdv_none";
+    pub const VIRTIO_BLK: &str = "virtio_blk";
+    pub const VIRTIO_BLK_NONE: &str = "virtio_blk_none";
+    pub const VIRTIO_NET: &str = "virtio_net";
+    pub const VIRTIO_NET_NONE: &str = "virtio_net_none";
 }
 
 /// Resolve a message key for a given language.
@@ -112,6 +135,14 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::SMP_APIC_BYTE => "SMP: AP APIC-ID(byte)=",
             key::SMP_AP_IDS => "SMP: AP IDs=",
             key::SMP_READY => "SMP: AP READY=",
+            key::VIRTIO_SCAN => "VirtIO: scanning ECAM segments\r\n",
+            key::VIRTIO_NONE => "VirtIO: no devices found\r\n",
+            key::VIRTIO_BLK => "VirtIO-blk: capacity=",
+            key::VIRTIO_BLK_NONE => "VirtIO-blk: not found\r\n",
+            key::VIRTIO_NET => "VirtIO-net: present\r\n",
+            key::VIRTIO_NET_NONE => "VirtIO-net: not found\r\n",
+            key::IOMMU_VTD_NONE => "VT-d: DMAR not found\r\n",
+            key::IOMMU_AMDV_NONE => "AMD-Vi: IVRS not found\r\n",
             _ => "\r\n",
         },
         Lang::Ja => match key {
@@ -136,6 +167,14 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::SMP_APIC_BYTE => "SMP: AP APIC-ID(下位1B)=",
             key::SMP_AP_IDS => "SMP: AP ID配列=",
             key::SMP_READY => "SMP: AP READY=",
+            key::VIRTIO_SCAN => "VirtIO: ECAMセグメントを走査中\r\n",
+            key::VIRTIO_NONE => "VirtIO: デバイスが見つかりません\r\n",
+            key::VIRTIO_BLK => "VirtIO-blk: 容量=",
+            key::VIRTIO_BLK_NONE => "VirtIO-blk: 見つかりません\r\n",
+            key::VIRTIO_NET => "VirtIO-net: 検出\r\n",
+            key::VIRTIO_NET_NONE => "VirtIO-net: 見つかりません\r\n",
+            key::IOMMU_VTD_NONE => "VT-d: DMARが見つかりません\r\n",
+            key::IOMMU_AMDV_NONE => "AMD-Vi: IVRSが見つかりません\r\n",
             _ => "\r\n",
         },
         Lang::Zh => match key {
@@ -160,6 +199,14 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::SMP_APIC_BYTE => "SMP: AP APIC-ID(低1字节)=",
             key::SMP_AP_IDS => "SMP: AP ID列表=",
             key::SMP_READY => "SMP: AP READY=",
+            key::VIRTIO_SCAN => "VirtIO: 正在扫描ECAM段\r\n",
+            key::VIRTIO_NONE => "VirtIO: 未找到设备\r\n",
+            key::VIRTIO_BLK => "VirtIO-blk: 容量=",
+            key::VIRTIO_BLK_NONE => "VirtIO-blk: 未找到\r\n",
+            key::VIRTIO_NET => "VirtIO-net: 已检测\r\n",
+            key::VIRTIO_NET_NONE => "VirtIO-net: 未找到\r\n",
+            key::IOMMU_VTD_NONE => "VT-d: 未找到DMAR\r\n",
+            key::IOMMU_AMDV_NONE => "AMD-Vi: 未找到IVRS\r\n",
             _ => "\r\n",
         },
     }

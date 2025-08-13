@@ -10,6 +10,7 @@
 use core::mem::size_of;
 
 #[repr(C, packed)]
+#[derive(Clone, Copy)]
 struct IdtEntry {
     offset_low: u16,
     selector: u16,
@@ -37,14 +38,13 @@ static mut IDT: [IdtEntry; 256] = [IdtEntry {
 }; 256];
 
 /// Naked non-returning stub used for all vectors.
-#[naked]
+#[unsafe(naked)]
 pub unsafe extern "C" fn isr_halt_forever() -> ! {
-    core::arch::asm!(
+    core::arch::naked_asm!(
         "cli",       // do not allow re-entry
-        "1:",
+        "2:",
         "hlt",       // sleep to reduce power
-        "jmp 1b",    // loop forever
-        options(noreturn)
+        "jmp 2b",    // loop forever
     );
 }
 
@@ -89,10 +89,13 @@ pub fn init() {
 }
 
 #[inline(always)]
-fn isr_addr() -> u64 { unsafe { isr_halt_forever as extern "C" fn() as u64 } }
+fn isr_addr() -> u64 {
+    // Function pointers to extern "C" fns can be cast to usize/u64 safely.
+    isr_halt_forever as usize as u64
+}
 
 unsafe fn load_idt() {
-    let desc = IdtDescriptor { limit: (size_of::<IdtEntry>() * 256 - 1) as u16, base: (&IDT as *const _) as u64 };
+    let desc = IdtDescriptor { limit: (size_of::<IdtEntry>() * 256 - 1) as u16, base: (core::ptr::addr_of!(IDT) as *const _) as u64 };
     core::arch::asm!("lidt [{}]", in(reg) &desc, options(readonly, nostack, preserves_flags));
 }
 

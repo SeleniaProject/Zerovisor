@@ -10,6 +10,8 @@ use core::ptr::{read_volatile, write_volatile};
 
 use uefi::prelude::Boot;
 use uefi::table::SystemTable;
+use core::fmt::Write as _;
+use crate::util::format;
 
 /// ACPI Generic Address Structure (GAS)
 #[repr(C, packed)]
@@ -119,7 +121,7 @@ pub fn calibrate_tsc_via_hpet(system_table: &SystemTable<Boot>, sample_hpet_tick
     // Ensure HPET enabled; save previous config.
     let prev = enable_hpet_counter(info.base_phys);
     // Synchronize to a change in HPET counter to reduce partial-tick error.
-    let mut last = read_hpet_main_counter(info.base_phys);
+    let last = read_hpet_main_counter(info.base_phys);
     let mut now = last;
     while now == last { now = read_hpet_main_counter(info.base_phys); }
 
@@ -146,7 +148,7 @@ pub fn calibrate_tsc_via_hpet(system_table: &SystemTable<Boot>, sample_hpet_tick
 }
 
 /// Print a brief HPET presence line.
-pub fn report_hpet(system_table: &SystemTable<Boot>) {
+pub fn report_hpet(system_table: &mut SystemTable<Boot>) {
     let lang = crate::i18n::detect_lang(system_table);
     if let Some(info) = locate_hpet(system_table) {
         let hz = hpet_hz_from_period(info.period_fs);
@@ -156,7 +158,7 @@ pub fn report_hpet(system_table: &SystemTable<Boot>) {
         // Prefix localized: "HPET: present, base=0x"
         let _ = stdout.write_str(crate::i18n::t(lang, crate::i18n::key::HPET_PRESENT));
         // Append hex base and frequency
-        n += crate::util::format::u64_hex(info.base_phys, &mut buf[n..]);
+        n += format::u64_hex(info.base_phys, &mut buf[n..]);
         for &b in b" freq=" { buf[n] = b; n += 1; }
         n += crate::firmware::acpi::u32_to_dec((hz / 1_000_000) as u32, &mut buf[n..]);
         for &b in b" MHz\r\n" { buf[n] = b; n += 1; }

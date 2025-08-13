@@ -189,6 +189,13 @@ pub(crate) struct MadtHeader {
     // followed by variable-length APIC structures
 }
 
+/// Read Local APIC base address from MADT header.
+pub(crate) fn madt_lapic_base(hdr: &'static SdtHeader) -> u32 {
+    let madt = hdr as *const SdtHeader as *const MadtHeader;
+    let madt = unsafe { &*madt };
+    madt.lapic_addr
+}
+
 /// Enumerate CPU APIC IDs from MADT and print to the provided writer function.
 pub(crate) fn madt_list_cpus_from<F>(hdr: &'static SdtHeader, mut writer: F)
 where
@@ -287,6 +294,42 @@ pub(crate) fn madt_count_logical_cpus_from(hdr: &'static SdtHeader) -> u32 {
     count
 }
 
+/// Iterate processor APIC IDs (both Local APIC and x2APIC) from MADT and call the callback.
+pub(crate) fn madt_for_each_processor_id(mut f: impl FnMut(u32), hdr: &'static SdtHeader) {
+    let madt = hdr as *const SdtHeader as *const MadtHeader;
+    let madt = unsafe { &*madt };
+    let base = madt as *const MadtHeader as usize;
+    let total_len = madt.header.length as usize;
+    let mut off = core::mem::size_of::<MadtHeader>();
+    while off + 2 <= total_len {
+        let p = (base + off) as *const u8;
+        let etype = unsafe { p.read() };
+        let elen = unsafe { p.add(1).read() } as usize;
+        if elen < 2 || off + elen > total_len { break; }
+        match etype {
+            0 => {
+                if elen >= 8 {
+                    let apic_id = unsafe { p.add(3).read() } as u32;
+                    f(apic_id);
+                }
+            }
+            9 => {
+                if elen >= 16 {
+                    let apic_id = u32::from_le_bytes([
+                        unsafe { p.add(4).read() },
+                        unsafe { p.add(5).read() },
+                        unsafe { p.add(6).read() },
+                        unsafe { p.add(7).read() },
+                    ]);
+                    f(apic_id);
+                }
+            }
+            _ => {}
+        }
+        off += elen;
+    }
+}
+
 pub(crate) fn u32_to_dec(mut v: u32, out: &mut [u8]) -> usize {
     // write decimal to buffer; returns number of bytes written
     if v == 0 {
@@ -344,6 +387,21 @@ where
         n += u64_to_hex(a.base_address, &mut buf[n..]);
         buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
         writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+        off += core::mem::size_of::<McfgAllocation>();
+    }
+}
+
+/// Iterate PCIe ECAM allocations from MCFG and call the provided closure.
+pub(crate) fn mcfg_for_each_allocation_from(mut f: impl FnMut(&McfgAllocation), hdr: &'static SdtHeader) {
+    let mcfg = hdr as *const SdtHeader as *const McfgHeader;
+    let mcfg = unsafe { &*mcfg };
+    let base = mcfg as *const McfgHeader as usize;
+    let total = mcfg.header.length as usize;
+    let mut off = core::mem::size_of::<McfgHeader>();
+    while off + core::mem::size_of::<McfgAllocation>() <= total {
+        let p = (base + off) as *const McfgAllocation;
+        let a = unsafe { &*p };
+        f(a);
         off += core::mem::size_of::<McfgAllocation>();
     }
 }
@@ -532,6 +590,89 @@ pub(crate) fn ivrs_list_entries_from(mut writer: impl FnMut(&str), hdr: &'static
         n += u32_to_dec(len as u32, &mut buf[n..]);
         buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
         writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+        off += len;
+    }
+}
+
+/// Iterate Intel VT-d DRHD units and invoke the closure with (PCI Segment, Register Base Address).
+/// This performs only a shallow, header-safe walk without dereferencing the register base.
+pub(crate) fn dmar_for_each_drhd_from(mut f: impl FnMut(u16, u64), hdr: &'static SdtHeader) {
+    #[repr(C, packed)]
+    struct DmarTableHeader { header: SdtHeader, host_addr_width: u8, flags: u8, _rsvd: [u8; 10] }
+    let base = hdr as *const SdtHeader as usize;
+    let total_len = hdr.length as usize;
+    let mut off = core::mem::size_of::<DmarTableHeader>();
+    while off + 4 <= total_len {
+        let p = (base + off) as *const u8;
+        let t0 = unsafe { p.read() } as u16;
+        let t1 = unsafe { p.add(1).read() } as u16;
+        let typ = t0 | ((t1 as u16) << 8);
+        let l0 = unsafe { p.add(2).read() } as u16;
+        let l1 = unsafe { p.add(3).read() } as u16;
+        let len = (l0 | ((l1 as u16) << 8)) as usize;
+        if len < 4 || off + len > total_len { break; }
+        if typ == 0 {
+            // DRHD
+            if len >= 4 + 12 {
+                let seg_lo = unsafe { p.add(6).read() } as u16;
+                let seg_hi = unsafe { p.add(7).read() } as u16;
+                let seg = (seg_lo | (seg_hi << 8)) as u16;
+                let mut addr: u64 = 0;
+                for i in 0..8 { addr |= (unsafe { p.add(8 + i).read() } as u64) << (i * 8); }
+                f(seg, addr);
+            }
+        }
+        off += len;
+    }
+}
+
+/// Iterate DRHD device scopes and yield (segment, reg_base, bus, dev, func) for each PCI path entry.
+/// Parses only shallow fields as per DMAR Device Scope format: header (type,len,_,bus) + path entries of (dev,func) pairs.
+pub(crate) fn dmar_for_each_device_scope_from(mut f: impl FnMut(u16, u64, u8, u8, u8), hdr: &'static SdtHeader) {
+    #[repr(C, packed)]
+    struct DmarTableHeader { header: SdtHeader, host_addr_width: u8, flags: u8, _rsvd: [u8; 10] }
+    let base = hdr as *const SdtHeader as usize;
+    let total_len = hdr.length as usize;
+    let mut off = core::mem::size_of::<DmarTableHeader>();
+    while off + 4 <= total_len {
+        let p = (base + off) as *const u8;
+        let t0 = unsafe { p.read() } as u16;
+        let t1 = unsafe { p.add(1).read() } as u16;
+        let typ = t0 | ((t1 as u16) << 8);
+        let l0 = unsafe { p.add(2).read() } as u16;
+        let l1 = unsafe { p.add(3).read() } as u16;
+        let len = (l0 | ((l1 as u16) << 8)) as usize;
+        if len < 4 || off + len > total_len { break; }
+        if typ == 0 {
+            // DRHD: parse device scopes
+            let mut header_size_for_scopes: usize = 0;
+            let mut seg: u16 = 0;
+            let mut reg_base: u64 = 0;
+            if len >= 4 + 12 {
+                seg = (unsafe { p.add(6).read() } as u16) | ((unsafe { p.add(7).read() } as u16) << 8);
+                for i in 0..8 { reg_base |= (unsafe { p.add(8 + i).read() } as u64) << (i * 8); }
+                header_size_for_scopes = 4 + 12;
+            }
+            if header_size_for_scopes > 0 && header_size_for_scopes < len {
+                let mut s_off = off + header_size_for_scopes;
+                let end = off + len;
+                while s_off + 6 <= end {
+                    let sp = (base + s_off) as *const u8;
+                    let s_len = (unsafe { sp.add(1).read() } as u16) | ((unsafe { sp.add(2).read() } as u16) << 8);
+                    if s_len < 6 || s_off + (s_len as usize) > end { break; }
+                    let bus = unsafe { sp.add(4).read() } as u8;
+                    // Device path entries follow (dev,func) pairs
+                    let mut path_off = 6usize;
+                    while path_off + 2 <= s_len as usize {
+                        let dev = unsafe { sp.add(path_off).read() } as u8;
+                        let func = unsafe { sp.add(path_off + 1).read() } as u8;
+                        f(seg, reg_base, bus, dev, func);
+                        path_off += 2;
+                    }
+                    s_off += s_len as usize;
+                }
+            }
+        }
         off += len;
     }
 }

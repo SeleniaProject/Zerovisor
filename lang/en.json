@@ -19,6 +19,14 @@
   "smp_lm_count": "SMP: AP LM-count=",
   "smp_apic_byte": "SMP: AP APIC-ID(byte)=",
   "smp_ap_ids": "SMP: AP IDs=",
-  "smp_ready": "SMP: AP READY="
+  "smp_ready": "SMP: AP READY=",
+  "virtio_scan": "VirtIO: scanning ECAM segments\r\n",
+  "virtio_none": "VirtIO: no devices found\r\n",
+  "virtio_blk": "VirtIO-blk: capacity=",
+  "virtio_blk_none": "VirtIO-blk: not found\r\n",
+  "virtio_net": "VirtIO-net: present\r\n",
+  "virtio_net_none": "VirtIO-net: not found\r\n",
+  "iommu_vtd_none": "VT-d: DMAR not found\r\n",
+  "iommu_amdv_none": "AMD-Vi: IVRS not found\r\n"
 }
 

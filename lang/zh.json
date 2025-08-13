@@ -19,7 +19,15 @@
   "smp_lm_count": "SMP: AP 长模式计数=",
   "smp_apic_byte": "SMP: AP APIC-ID(低1字节)=",
   "smp_ap_ids": "SMP: AP ID列表=",
-  "smp_ready": "SMP: AP READY="
+  "smp_ready": "SMP: AP READY=",
+  "virtio_scan": "VirtIO: 正在扫描ECAM段\r\n",
+  "virtio_none": "VirtIO: 未找到设备\r\n",
+  "virtio_blk": "VirtIO-blk: 容量=",
+  "virtio_blk_none": "VirtIO-blk: 未找到\r\n",
+  "virtio_net": "VirtIO-net: 已检测\r\n",
+  "virtio_net_none": "VirtIO-net: 未找到\r\n",
+  "iommu_vtd_none": "VT-d: 未找到DMAR\r\n",
+  "iommu_amdv_none": "AMD-Vi: 未找到IVRS\r\n"
 }
 
 

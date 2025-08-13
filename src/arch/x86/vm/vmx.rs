@@ -4,6 +4,7 @@
 
 use crate::arch::x86::cpuid;
 use core::fmt::Write as _;
+use crate::util::format;
 
 // Control MSR indices
 const IA32_FEATURE_CONTROL: u32 = 0x3A;
@@ -104,7 +105,7 @@ pub fn vmx_report_ept_vpid_cap(system_table: &mut uefi::table::SystemTable<uefi:
     let mut buf = [0u8; 96];
     let mut n = 0;
     for &b in b"VMX MSR EPT_VPID_CAP=0x" { buf[n] = b; n += 1; }
-    n += crate::util::format::u64_hex(cap, &mut buf[n..]);
+    n += format::u64_hex(cap, &mut buf[n..]);
     buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
     let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
 
@@ -224,7 +225,7 @@ pub fn vmx_vmcs_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude
 }
 
 /// Configure VMCS controls to enable secondary controls and EPT, and set EPTP.
-pub fn vmx_ept_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude::Boot>) -> Result<(), &'static str> {
+pub fn vmx_ept_smoke_test(system_table: &mut uefi::table::SystemTable<uefi::prelude::Boot>) -> Result<(), &'static str> {
     if !vmx_preflight_available() { return Err("VMX not available"); }
     if let Err(e) = feature_control_allows_vmx() { return Err(e); }
 

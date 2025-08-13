@@ -19,6 +19,14 @@
   "smp_lm_count": "SMP: AP 長モード回数=",
   "smp_apic_byte": "SMP: AP APIC-ID(下位1B)=",
   "smp_ap_ids": "SMP: AP ID配列=",
-  "smp_ready": "SMP: AP READY="
+  "smp_ready": "SMP: AP READY=",
+  "virtio_scan": "VirtIO: ECAMセグメントを走査中\r\n",
+  "virtio_none": "VirtIO: デバイスが見つかりません\r\n",
+  "virtio_blk": "VirtIO-blk: 容量=",
+  "virtio_blk_none": "VirtIO-blk: 見つかりません\r\n",
+  "virtio_net": "VirtIO-net: 検出\r\n",
+  "virtio_net_none": "VirtIO-net: 見つかりません\r\n",
+  "iommu_vtd_none": "VT-d: DMARが見つかりません\r\n",
+  "iommu_amdv_none": "AMD-Vi: IVRSが見つかりません\r\n"
 }
 

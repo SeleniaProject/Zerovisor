@@ -9,9 +9,10 @@
 
 use uefi::prelude::Boot;
 use uefi::table::SystemTable;
+use core::fmt::Write as _;
 
 /// Enumerate CPUs using MADT and print a brief list with counts.
-pub fn enumerate_and_report(system_table: &SystemTable<Boot>) {
+pub fn enumerate_and_report(system_table: &mut SystemTable<Boot>) {
     if let Some(madt_hdr) = crate::firmware::acpi::find_madt(system_table) {
         let stdout = system_table.stdout();
         let _ = stdout.write_str("SMP: MADT present\r\n");
@@ -32,33 +33,21 @@ pub fn start_aps_init_sipi(system_table: &SystemTable<Boot>, lapic_base: usize, 
     let vec = ((trampoline_phys_page >> 12) & 0xFF) as u8;
     // Gather APIC IDs via MADT
     if let Some(madt_hdr) = crate::firmware::acpi::find_madt(system_table) {
-        let base = madt_hdr as *const crate::firmware::acpi::SdtHeader as usize;
-        let total = unsafe { (*(madt_hdr as *const crate::firmware::acpi::MadtHeader)).header.length as usize };
-        let mut off = core::mem::size_of::<crate::firmware::acpi::MadtHeader>();
         // Identify BSP APIC ID by reading our own LAPIC ID register.
         let bsp_apic = crate::arch::x86::lapic::read_lapic_id(lapic_base);
-        // Send INIT then two SIPIs to each AP
-        while off + 2 <= total {
-            let p = (base + off) as *const u8;
-            let etype = unsafe { p.read() };
-            let elen = unsafe { p.add(1).read() } as usize;
-            if elen < 2 || off + elen > total { break; }
-            if etype == 0 && elen >= 8 {
-                let apic_id = unsafe { p.add(3).read() } as u32;
-                if apic_id != bsp_apic {
-                    crate::arch::x86::lapic::send_init_auto(lapic_base, apic_id);
-                    crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
-                    // Small wait (~10ms) via UEFI Stall
-                    let _ = system_table.boot_services().stall(10_000);
-                    crate::arch::x86::lapic::send_sipi_auto(lapic_base, apic_id, vec);
-                    crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
-                    let _ = system_table.boot_services().stall(200);
-                    crate::arch::x86::lapic::send_sipi_auto(lapic_base, apic_id, vec);
-                    crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
-                }
+        // Send INIT then two SIPIs to each AP (iterate via helper)
+        crate::firmware::acpi::madt_for_each_processor_id(|apic_id| {
+            if apic_id != bsp_apic {
+                crate::arch::x86::lapic::send_init_auto(lapic_base, apic_id);
+                crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
+                let _ = system_table.boot_services().stall(10_000);
+                crate::arch::x86::lapic::send_sipi_auto(lapic_base, apic_id, vec);
+                crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
+                let _ = system_table.boot_services().stall(200);
+                crate::arch::x86::lapic::send_sipi_auto(lapic_base, apic_id, vec);
+                crate::arch::x86::lapic::wait_icr_delivery(lapic_base);
             }
-            off += elen;
-        }
+        }, madt_hdr);
     }
 }
 
