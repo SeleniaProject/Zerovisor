@@ -19,7 +19,7 @@
   - 目的: CPUトポロジ、APIC情報、PCIe設定空間の基礎入手
   - 追記: DMAR/IVRSの検出とヘッダ要約・エントリ概要（DRHD/RMRR/ATSR/IVRS entries）を起動時に出力
   - 工数: 中
-- [ ] タスク: AP起動（SMP bring‑up）とタイムソース初期化
+- [x] タスク: AP起動（SMP bring‑up）とタイムソース初期化
   - 成果物: `src/arch/x86/smp.rs`, `src/time/*.rs`
   - 工数: 中
 
