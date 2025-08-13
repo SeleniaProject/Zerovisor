@@ -23,4 +23,13 @@ pub fn free_pages(system_table: &SystemTable<Boot>, ptr: *mut u8, pages: usize) 
     unsafe { let _ = system_table.boot_services().free_pages(ptr as u64, pages); }
 }
 
+/// Allocate pages at a specific physical address (4KiB aligned). Returns pointer on success.
+pub fn alloc_pages_at(system_table: &SystemTable<Boot>, phys: u64, pages: usize, mem_type: MemoryType) -> Option<*mut u8> {
+    let st = system_table.boot_services();
+    match st.allocate_pages(AllocateType::Address(phys), mem_type, pages) {
+        Ok(addr) => Some(addr as *mut u8),
+        Err(_) => None,
+    }
+}
+
 
