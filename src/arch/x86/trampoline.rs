@@ -141,4 +141,10 @@ pub fn build_ap_long_mode_tables(system_table: &SystemTable<Boot>, limit_bytes: 
     Some(pml4 as u64)
 }
 
+/// Read the protected-mode success flag at mailbox+4.
+pub fn read_mailbox_pm_ok(info: TrampolineInfo) -> bool {
+    let p = (info.phys_base as usize + info.mailbox_offset as usize + 4) as *const u8;
+    unsafe { core::ptr::read_volatile(p) != 0 }
+}
+
 
