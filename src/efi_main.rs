@@ -196,6 +196,14 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     m2 += crate::firmware::acpi::u32_to_dec(expected, &mut b2[m2..]);
                     b2[m2] = b'\r'; m2 += 1; b2[m2] = b'\n'; m2 += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&b2[..m2]).unwrap_or("\r\n"));
+                    // Wait for AP IDs to be recorded up to expected-1 (excluding BSP), with timeout
+                    let observed = crate::arch::x86::smp::wait_for_ap_ids(&system_table, info, expected.saturating_sub(1), 200_000);
+                    let mut b3 = [0u8; 64];
+                    let mut m3 = 0;
+                    for &b in b"SMP: observed AP IDs=" { b3[m3] = b; m3 += 1; }
+                    m3 += crate::firmware::acpi::u32_to_dec(observed, &mut b3[m3..]);
+                    b3[m3] = b'\r'; m3 += 1; b3[m3] = b'\n'; m3 += 1;
+                    let _ = stdout.write_str(core::str::from_utf8(&b3[..m3]).unwrap_or("\r\n"));
                 }
 
                 // Report PM/LM success flags

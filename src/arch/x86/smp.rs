@@ -79,4 +79,24 @@ pub fn write_ap_cr3_mailbox(system_table: &SystemTable<Boot>, trampoline_phys_pa
     }
 }
 
+/// Wait until a given number of AP IDs have been recorded by APs into the
+/// mailbox ID array at offset +32. Returns the number of observed IDs.
+pub fn wait_for_ap_ids(system_table: &SystemTable<Boot>, info: crate::arch::x86::trampoline::TrampolineInfo, expected_ap_count: u32, timeout_us: u64) -> u32 {
+    let base = info.phys_base as usize + info.mailbox_offset as usize;
+    let mut waited = 0u64;
+    // The IDs array is a byte array of length 64 for now
+    let capacity: usize = 64;
+    loop {
+        let mut nnz: u32 = 0;
+        for i in 0..capacity {
+            let b = unsafe { core::ptr::read_volatile((base + 32 + i) as *const u8) };
+            if b != 0 { nnz = nnz.saturating_add(1); } else { break; }
+        }
+        if nnz >= expected_ap_count { return expected_ap_count; }
+        if waited >= timeout_us { return nnz; }
+        let _ = system_table.boot_services().stall(1000);
+        waited += 1000;
+    }
+}
+
 
