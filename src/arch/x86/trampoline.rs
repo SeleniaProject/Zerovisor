@@ -204,4 +204,10 @@ pub fn read_mailbox_pm_ok(info: TrampolineInfo) -> bool {
     unsafe { core::ptr::read_volatile(p) != 0 }
 }
 
+/// Read the long-mode entry success flag at mailbox+5.
+pub fn read_mailbox_lm_ok(info: TrampolineInfo) -> bool {
+    let p = (info.phys_base as usize + info.mailbox_offset as usize + 5) as *const u8;
+    unsafe { core::ptr::read_volatile(p) != 0 }
+}
+
 

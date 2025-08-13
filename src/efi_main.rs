@@ -189,9 +189,11 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                 buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
                 let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
 
-                // Report PM success flag
+                // Report PM/LM success flags
                 let pm_ok = crate::arch::x86::trampoline::read_mailbox_pm_ok(info);
+                let lm_ok = crate::arch::x86::trampoline::read_mailbox_lm_ok(info);
                 let _ = stdout.write_str(if pm_ok { "SMP: AP PM-entry OK\r\n" } else { "SMP: AP PM-entry not observed\r\n" });
+                let _ = stdout.write_str(if lm_ok { "SMP: AP LM-entry OK\r\n" } else { "SMP: AP LM-entry not observed\r\n" });
             }
         }
     }
