@@ -17,4 +17,10 @@ pub fn svm_try_enable() -> Result<(), &'static str> {
     Ok(())
 }
 
+/// Compose minimal NPT and return nested CR3 for smoke test purposes.
+pub fn svm_prepare_npt(system_table: &uefi::table::SystemTable<uefi::prelude::Boot>, limit_bytes: u64) -> Option<u64> {
+    let pml4 = crate::mm::npt::build_identity_2m(system_table, limit_bytes)?;
+    Some(crate::mm::npt::ncr3_from_pml4(pml4 as u64))
+}
+
 
