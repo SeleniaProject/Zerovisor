@@ -8,27 +8,50 @@
   - 成果物: `src/arch/x86/cpuid.rs`, `src/arch/x86/msr.rs`
   - 目的: VMX/SVM、EPT/NPT、VT‑d/AMD‑VIの存在検出（MSR書込みは未使用／安全側）
   - 工数: 中
-- [x] タスク: 多言語ログ（日本語/英語最小）
+- [x] タスク: 多言語ログ（日本語/英語/中国語）
   - 成果物: `src/i18n/mod.rs`, `lang/*.json`
   - 目的: ログメッセージを言語切替（現状は英語既定、将来`PlatformLang`対応予定）
   - 工数: 小
 
 ### フェーズ2: ACPIとSMP初期化
-- [x] タスク: ACPIテーブル走査（RSDP→XSDT→FADT/MADT/MCFG）
-  - 成果物: `src/firmware/acpi/*.rs`
-  - 目的: CPUトポロジ、APIC情報、PCIe設定空間の基礎入手
+- [x] タスク: ACPIテーブル走査（RSDP→XSDT→FADT/MADT/MCFG/HPET）
+  - 成果物: `src/firmware/acpi/*.rs`, `src/time/hpet.rs`
+  - 目的: CPUトポロジ、APIC情報、PCIe設定空間、HPETの基礎入手
   - 追記: DMAR/IVRSの検出とヘッダ要約・エントリ概要（DRHD/RMRR/ATSR/IVRS entries）を起動時に出力
+  - 追記: MCFGからPCIe ECAMセグメント一覧を出力
   - 工数: 中
 - [x] タスク: AP起動（SMP bring‑up）とタイムソース初期化
   - 成果物: `src/arch/x86/smp.rs`, `src/time/*.rs`
+  - 目的: MADT列挙、INIT+SIPI送出、TSC校正（HPET優先/UEFI Stallフォールバック）
   - 工数: 中
+- [x] タスク: リアルモードトランポリン構築とAP同期
+  - 成果物: `src/arch/x86/trampoline.rs`
+  - 目的: PM/LM到達フラグ、AP ID収集、RSP配列、GO/READY同期、観測カウンタ
+  - 工数: 大
+- [x] タスク: LAPIC/x2APIC初期化ユーティリティ
+  - 成果物: `src/arch/x86/lapic.rs`
+  - 目的: APIC ID読取、SVR設定、INIT/SIPI送出、自動x2APIC経路
+  - 工数: 中
+- [x] タスク: 最小IDTの構築と割り込み有効化
+  - 成果物: `src/arch/x86/idt.rs`
+  - 目的: 例外発生時の安全停止（トリプルフォールト回避）、STI有効化
+  - 工数: 小
 
 ### フェーズ3: VMX/SVM有効化と二段ページング
-- [ ] タスク: VMXON/VMCS（Intel）とVMCB（AMD）初期化抽象
-  - 成果物: `src/arch/x86/vm/vmx.rs`, `src/arch/x86/vm/svm.rs`, `src/arch/x86/vm/mod.rs`
+- [x] タスク: VMX/SVMプレフライトと初期化抽象（VMCS/VMCB領域管理含む）
+  - 成果物: `src/arch/x86/vm/vmx.rs`, `src/arch/x86/vm/vmcs.rs`, `src/arch/x86/vm/svm.rs`
+  - 目的: 可用性検証、CR0/CR4固定ビット反映、IA32_FEATURE_CONTROL検査、VMXON/VMXOFFおよびVMPTRLD/VMCLEARのスモークテスト
+  - 追記: VMX制御MSR/EPT_VPID_CAPの報告
   - 工数: 大
-- [ ] タスク: EPT/NPTテーブル生成（4K/2M/1G対応）
+- [x] タスク: VMX EPTP設定スモークテスト（起動前検証）
+  - 成果物: `src/arch/x86/vm/vmx.rs`, `src/mm/ept.rs`
+  - 目的: 恒等マップEPTを生成し、VMCSへEPTP設定まで確認（VMLAUNCHは未実施）
+  - 工数: 中
+- [x] タスク: EPT/NPTテーブル生成（現状範囲）
   - 成果物: `src/mm/ept.rs`, `src/mm/npt.rs`
+  - 目的: 二段変換の恒等マップ生成とEPTR/NCr3構成
+  - 現状: EPT=2M/1G対応、NPT=2M対応
+  - 未了: 4Kページ対応（EPT/NPT）、NPTの1G対応、A/Dビット運用、詳細属性
   - 工数: 大
 
 ### フェーズ4: デバイス仮想化の基礎
@@ -73,6 +96,10 @@
 - [x] タスク: 多言語辞書（CLI/ログ）
   - 成果物: `lang/ja.json`, `lang/en.json`, `lang/zh.json`
   - 工数: 小
+- [ ] タスク: UEFI `PlatformLang` による動的言語選択
+  - 成果物: `src/i18n/mod.rs`
+  - 現状: 英語固定フォールバック（検出スタブあり）
+  - 工数: 小
 
 ### パフォーマンス検証タスク（性能上限の可視化）
 - [ ] タスク: VM‑Entry/Exit サイクル計測の設計
@@ -88,6 +115,7 @@
 ### リスク対応タスク（Risks & Mitigations）
 - [ ] タスク: タイマフォールバック戦略（Invariant TSC→HPET）
   - 成果物: 設計メモ、検証手順
+  - 現状: 実装はHPET優先/UEFI Stallフォールバックで動作、文書化と検証残
   - 工数: 小
 - [ ] タスク: SR‑IOV/ACS未対応デバイス検出と制限
   - 成果物: 要件とテスト項目
