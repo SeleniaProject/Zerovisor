@@ -99,4 +99,14 @@ pub fn apic_base_via_msr() -> Option<usize> {
     if base == 0 { None } else { Some(base) }
 }
 
+/// Enable x2APIC mode if supported: set IA32_APIC_BASE[10]=1 (x2APIC enable).
+pub fn try_enable_x2apic() -> bool {
+    if !crate::arch::x86::cpuid::has_x2apic() { return false; }
+    // Read-modify-write IA32_APIC_BASE (0x1B): set bit 10 (x2APIC enable) and bit 11 (APIC global enable)
+    let mut v = unsafe { crate::arch::x86::msr::rdmsr(0x1B) };
+    v |= (1 << 11) | (1 << 10);
+    unsafe { crate::arch::x86::msr::wrmsr(0x1B, v); }
+    true
+}
+
 

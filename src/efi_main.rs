@@ -92,7 +92,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     }
 
     {
-        // Report HPET presence and nominal frequency if available
+        // Report HPET presence and nominal frequency if available (i18n handled within)
         time::hpet::report_hpet(&system_table);
 
         // Detect invariant TSC and calibrate; cache the result
@@ -158,6 +158,8 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         if let Some(info) = crate::arch::x86::trampoline::prepare_real_mode_trampoline(&system_table) {
             // Prepare identity-mapped native paging for APs and write CR3 to mailbox area
             crate::arch::x86::smp::write_ap_cr3_mailbox(&system_table, info.phys_base, 1u64 << 30);
+            // Try enabling x2APIC if supported
+            let _ = crate::arch::x86::lapic::try_enable_x2apic();
             // LAPIC base via MSR if possible; fall back to MADT
             let mut lapic_base = crate::arch::x86::lapic::apic_base_via_msr();
             if lapic_base.is_none() {

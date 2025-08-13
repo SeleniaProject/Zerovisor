@@ -79,4 +79,11 @@ pub fn has_invariant_tsc() -> bool {
     (r.edx & (1 << 8)) != 0
 }
 
+/// Indicates presence of x2APIC via CPUID.1:ECX[21].
+#[inline(always)]
+pub fn has_x2apic() -> bool {
+    let r = cpuid(leaf::BASIC_FEATURES, 0);
+    (r.ecx & (1 << 21)) != 0
+}
+
 
