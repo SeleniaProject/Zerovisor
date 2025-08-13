@@ -220,6 +220,17 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     m3 += crate::firmware::acpi::u32_to_dec(apic_byte, &mut buf3[m3..]);
                     buf3[m3] = b'\r'; m3 += 1; buf3[m3] = b'\n'; m3 += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&buf3[..m3]).unwrap_or("\r\n"));
+                    // Dump APIC ID list written by APs at mailbox+32 .. (byte array)
+                    let mut listbuf = [0u8; 128];
+                    let mut l = 0;
+                    for &b in b"SMP: AP IDs=" { listbuf[l] = b; l += 1; }
+                    for i in 0..16usize {
+                        let idb = unsafe { core::ptr::read_volatile((base + 32 + i) as *const u8) } as u32;
+                        if i > 0 { listbuf[l] = b','; l += 1; listbuf[l] = b' '; l += 1; }
+                        l += crate::firmware::acpi::u32_to_dec(idb, &mut listbuf[l..]);
+                    }
+                    listbuf[l] = b'\r'; l += 1; listbuf[l] = b'\n'; l += 1;
+                    let _ = stdout.write_str(core::str::from_utf8(&listbuf[..l]).unwrap_or("\r\n"));
                 }
             }
         }
