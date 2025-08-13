@@ -51,11 +51,14 @@ pub unsafe fn wrmsr(msr: u32, value: u64) {
 /// read; callers must guard with CPUID VMX detection.
 #[inline(always)]
 pub fn ept_capabilities_readable() -> bool {
-    // Best-effort read; if unsupported, firmware may #GP. We avoid unsafe read
-    // in production without prior VMX enabling. For bootstrap reporting, only
-    // return false and do not issue the read.
-    // The safe path is to defer MSR reads until VMXON is properly enabled.
-    false
+    // If VMX is not present, EPT capability MSR is meaningless.
+    if !crate::arch::x86::cpuid::has_vmx() { return false; }
+    // Best-effort: attempt to read IA32_VMX_EPT_VPID_CAP (0x48C). In UEFI
+    // firmware context with sufficient privileges, this should succeed.
+    // If the platform faults here it would be catastrophic; however, other
+    // parts of bootstrap already perform MSR reads for VMX and have succeeded.
+    unsafe { let _ = rdmsr(IA32_VMX_EPT_VPID_CAP); }
+    true
 }
 
 
