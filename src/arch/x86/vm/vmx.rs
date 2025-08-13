@@ -271,12 +271,17 @@ pub fn vmx_ept_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude:
     let adj_sec = crate::arch::x86::vm::vmcs::satisfy_controls(desired_sec, sec_allowed0, sec_allowed1);
     crate::arch::x86::vm::vmcs::vmwrite(crate::arch::x86::vm::vmcs::VMCS_SECONDARY_CTLS, adj_sec as u64)?;
 
-    // Build minimal EPT and set EPTP
-    if let Some(pml4) = crate::mm::ept::build_identity_2m(system_table, 1u64 << 30) {
+    // Build minimal EPT and set EPTP (pick 1GiB if supported)
+    let ept_caps = unsafe { crate::arch::x86::msr::rdmsr(0x48C) };
+    let caps = crate::mm::ept::EptCaps {
+        large_page_2m: (ept_caps & (1 << 16)) != 0,
+        large_page_1g: (ept_caps & (1 << 17)) != 0,
+    };
+    if let Some(pml4) = crate::mm::ept::build_identity_best(system_table, 1u64 << 30, caps) {
         let eptp = crate::mm::ept::eptp_from_pml4(pml4 as u64);
         crate::arch::x86::vm::vmcs::vmwrite(crate::arch::x86::vm::vmcs::VMCS_EPT_POINTER, eptp)?;
         let stdout = system_table.stdout();
-        let _ = stdout.write_str("VMX: EPTP set (identity 1GiB, 2MiB pages)\r\n");
+        let _ = stdout.write_str("VMX: EPTP set (identity mapping)\r\n");
     } else {
         let stdout = system_table.stdout();
         let _ = stdout.write_str("VMX: EPT build failed\r\n");

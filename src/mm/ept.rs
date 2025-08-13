@@ -49,6 +49,29 @@ pub fn build_identity_2m(system_table: &SystemTable<Boot>, limit_bytes: u64) -> 
     Some(pml4)
 }
 
+/// Build a minimal identity-mapped EPT up to `limit_bytes` using 1GiB pages.
+/// Returns the host-physical (identity-assumed) address of the PML4 table.
+pub fn build_identity_1g(system_table: &SystemTable<Boot>, limit_bytes: u64) -> Option<*mut u64> {
+    if limit_bytes == 0 { return None; }
+    let pml4 = alloc_zeroed_page(system_table)?;
+    let pdpt = alloc_zeroed_page(system_table)?;
+    unsafe {
+        // Link PML4[0] -> PDPT
+        *pml4 = (pdpt as u64) | EPT_R | EPT_W | EPT_X;
+        // Fill PDPT entries with 1GiB leaf mappings
+        let num_gb = ((limit_bytes + (1 << 30) - 1) >> 30) as usize;
+        let mut phys: u64 = 0;
+        for i in 0..num_gb {
+            let entry = (phys & 0x000F_FFFF_C000_0000) // 1GiB aligned
+                | EPT_R | EPT_W | EPT_X | EPT_MEMTYPE_WB | EPT_IGNORE_PAT | EPT_PAGE_SIZE;
+            *pdpt.add(i) = entry;
+            phys = phys.wrapping_add(1u64 << 30);
+            if phys >= limit_bytes { break; }
+        }
+    }
+    Some(pml4)
+}
+
 /// Compose an EPTP value from a PML4 physical address.
 /// - Memory type: WB (6)
 /// - Page-walk length: 4 levels -> encode 3
@@ -58,6 +81,21 @@ pub fn eptp_from_pml4(pml4_phys: u64) -> u64 {
     let memtype_wb = 6u64; // bits 2:0
     let walk_len = 3u64 << 3; // bits 5:3 (4-level)
     addr | memtype_wb | walk_len
+}
+
+/// EPT capability flags (subset) used by builder selection.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EptCaps {
+    pub large_page_2m: bool,
+    pub large_page_1g: bool,
+}
+
+/// Build identity mapping selecting best large page size supported by caps.
+pub fn build_identity_best(system_table: &SystemTable<Boot>, limit_bytes: u64, caps: EptCaps) -> Option<*mut u64> {
+    if caps.large_page_1g { return build_identity_1g(system_table, limit_bytes); }
+    if caps.large_page_2m { return build_identity_2m(system_table, limit_bytes); }
+    // Fallback to 2MiB as minimal implementation (even if caps say no, this is a stub path)
+    build_identity_2m(system_table, limit_bytes)
 }
 
 
