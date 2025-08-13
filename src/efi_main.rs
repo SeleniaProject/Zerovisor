@@ -185,7 +185,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                 let stdout = system_table.stdout();
                 let mut buf = [0u8; 64];
                 let mut n = 0;
-                for &b in b"SMP: AP wakeups (mailbox count)=" { buf[n] = b; n += 1; }
+                for &b in crate::i18n::t(lang, crate::i18n::key::SMP_OBSERVED).as_bytes() { buf[n] = b; n += 1; }
                 let cnt = crate::arch::x86::trampoline::read_mailbox_count(info) as u32;
                 n += crate::firmware::acpi::u32_to_dec(cnt, &mut buf[n..]);
                 buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
@@ -194,7 +194,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     let expected = acpi::madt_count_logical_cpus_from(madt_hdr2);
                     let mut b2 = [0u8; 64];
                     let mut m2 = 0;
-                    for &b in b"SMP: expected CPUs=" { b2[m2] = b; m2 += 1; }
+                    for &b in crate::i18n::t(lang, crate::i18n::key::SMP_EXPECTED).as_bytes() { b2[m2] = b; m2 += 1; }
                     m2 += crate::firmware::acpi::u32_to_dec(expected, &mut b2[m2..]);
                     b2[m2] = b'\r'; m2 += 1; b2[m2] = b'\n'; m2 += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&b2[..m2]).unwrap_or("\r\n"));
@@ -202,7 +202,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     let observed = crate::arch::x86::smp::wait_for_ap_ids(&system_table, info, expected.saturating_sub(1), 200_000);
                     let mut b3 = [0u8; 64];
                     let mut m3 = 0;
-                    for &b in b"SMP: observed AP IDs=" { b3[m3] = b; m3 += 1; }
+                    for &b in crate::i18n::t(lang, crate::i18n::key::SMP_OBSERVED).as_bytes() { b3[m3] = b; m3 += 1; }
                     m3 += crate::firmware::acpi::u32_to_dec(observed, &mut b3[m3..]);
                     b3[m3] = b'\r'; m3 += 1; b3[m3] = b'\n'; m3 += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&b3[..m3]).unwrap_or("\r\n"));
@@ -210,7 +210,7 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     let ready = crate::arch::x86::smp::signal_and_wait_ready(&system_table, info, observed, 200_000);
                     let mut b4 = [0u8; 64];
                     let mut m4 = 0;
-                    for &b in b"SMP: AP READY=" { b4[m4] = b; m4 += 1; }
+                    for &b in crate::i18n::t(lang, crate::i18n::key::SMP_READY).as_bytes() { b4[m4] = b; m4 += 1; }
                     m4 += crate::firmware::acpi::u32_to_dec(ready, &mut b4[m4..]);
                     b4[m4] = b'\r'; m4 += 1; b4[m4] = b'\n'; m4 += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&b4[..m4]).unwrap_or("\r\n"));
@@ -219,29 +219,29 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                 // Report PM/LM success flags
                 let pm_ok = crate::arch::x86::trampoline::read_mailbox_pm_ok(info);
                 let lm_ok = crate::arch::x86::trampoline::read_mailbox_lm_ok(info);
-                let _ = stdout.write_str(if pm_ok { "SMP: AP PM-entry OK\r\n" } else { "SMP: AP PM-entry not observed\r\n" });
-                let _ = stdout.write_str(if lm_ok { "SMP: AP LM-entry OK\r\n" } else { "SMP: AP LM-entry not observed\r\n" });
+                let _ = stdout.write_str(if pm_ok { crate::i18n::t(lang, crate::i18n::key::SMP_PM_OK) } else { crate::i18n::t(lang, crate::i18n::key::SMP_PM_NG) });
+                let _ = stdout.write_str(if lm_ok { crate::i18n::t(lang, crate::i18n::key::SMP_LM_OK) } else { crate::i18n::t(lang, crate::i18n::key::SMP_LM_NG) });
                 // If LM reached, also print the LM entry hit count at mailbox+6..+7 and the APIC ID byte at +8
                 if lm_ok {
                     let base = info.phys_base as usize + info.mailbox_offset as usize;
                     let cnt16 = unsafe { core::ptr::read_volatile((base + 6) as *const u16) } as u32;
                     let mut buf2 = [0u8; 64];
                     let mut m = 0;
-                    for &b in b"SMP: AP LM-count=" { buf2[m] = b; m += 1; }
+                    for &b in crate::i18n::t(lang, crate::i18n::key::SMP_LM_COUNT).as_bytes() { buf2[m] = b; m += 1; }
                     m += crate::firmware::acpi::u32_to_dec(cnt16, &mut buf2[m..]);
                     buf2[m] = b'\r'; m += 1; buf2[m] = b'\n'; m += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&buf2[..m]).unwrap_or("\r\n"));
                     let apic_byte = unsafe { core::ptr::read_volatile((base + 8) as *const u8) } as u32;
                     let mut buf3 = [0u8; 64];
                     let mut m3 = 0;
-                    for &b in b"SMP: AP APIC-ID(byte)=" { buf3[m3] = b; m3 += 1; }
+                    for &b in crate::i18n::t(lang, crate::i18n::key::SMP_APIC_BYTE).as_bytes() { buf3[m3] = b; m3 += 1; }
                     m3 += crate::firmware::acpi::u32_to_dec(apic_byte, &mut buf3[m3..]);
                     buf3[m3] = b'\r'; m3 += 1; buf3[m3] = b'\n'; m3 += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&buf3[..m3]).unwrap_or("\r\n"));
                     // Dump APIC ID list written by APs at mailbox+32 .. (byte array)
                     let mut listbuf = [0u8; 128];
                     let mut l = 0;
-                    for &b in b"SMP: AP IDs=" { listbuf[l] = b; l += 1; }
+                    for &b in crate::i18n::t(lang, crate::i18n::key::SMP_AP_IDS).as_bytes() { listbuf[l] = b; l += 1; }
                     for i in 0..16usize {
                         let idb = unsafe { core::ptr::read_volatile((base + 32 + i) as *const u8) } as u32;
                         if i > 0 { listbuf[l] = b','; l += 1; listbuf[l] = b' '; l += 1; }

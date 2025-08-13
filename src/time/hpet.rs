@@ -147,12 +147,15 @@ pub fn calibrate_tsc_via_hpet(system_table: &SystemTable<Boot>, sample_hpet_tick
 
 /// Print a brief HPET presence line.
 pub fn report_hpet(system_table: &SystemTable<Boot>) {
+    let lang = crate::i18n::detect_lang(system_table);
     if let Some(info) = locate_hpet(system_table) {
         let hz = hpet_hz_from_period(info.period_fs);
         let stdout = system_table.stdout();
         let mut buf = [0u8; 96];
         let mut n = 0;
-        for &b in b"HPET: present, base=0x" { buf[n] = b; n += 1; }
+        // Prefix localized: "HPET: present, base=0x"
+        let _ = stdout.write_str(crate::i18n::t(lang, crate::i18n::key::HPET_PRESENT));
+        // Append hex base and frequency
         n += crate::util::format::u64_hex(info.base_phys, &mut buf[n..]);
         for &b in b" freq=" { buf[n] = b; n += 1; }
         n += crate::firmware::acpi::u32_to_dec((hz / 1_000_000) as u32, &mut buf[n..]);
@@ -160,7 +163,7 @@ pub fn report_hpet(system_table: &SystemTable<Boot>) {
         let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
     } else {
         let stdout = system_table.stdout();
-        let _ = stdout.write_str("HPET: not found\r\n");
+        let _ = stdout.write_str(crate::i18n::t(lang, crate::i18n::key::HPET_NOT_FOUND));
     }
 }
 
