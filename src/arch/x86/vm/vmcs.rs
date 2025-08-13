@@ -20,11 +20,8 @@ pub fn control_msrs_masks(msr_val: u64) -> (u32, u32) {
 /// Compute a control value that satisfies allowed-0/allowed-1 constraints given a desired mask.
 #[inline(always)]
 pub fn satisfy_controls(desired: u32, allowed_0: u32, allowed_1: u32) -> u32 {
-    // Intel SDM: low 32 = allowed-0 (bit=1 means 0 allowed), high 32 = allowed-1 (bit=1 means 1 allowed)
-    // A safe composition is: (desired | must_be_one) & allowed_one
-    let must_be_one: u32 = !allowed_0;
-    let allowed_one: u32 = allowed_1;
-    (desired | must_be_one) & allowed_one
+    // Intel SDM: control = (desired & allowed-0) | allowed-1
+    (desired & allowed_0) | allowed_1
 }
 
 /// Allocate a 4KiB VMCS region and write the revision ID at the first 31 bits.
