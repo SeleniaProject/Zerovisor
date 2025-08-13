@@ -69,6 +69,12 @@ pub fn write_ap_cr3_mailbox(system_table: &SystemTable<Boot>, trampoline_phys_pa
         // counter at 0x800, CR3 at 0x802..0x809
         let ptr = (trampoline_phys_page as usize + 0x802) as *mut u64;
         unsafe { core::ptr::write_volatile(ptr, cr3); }
+        // Initialize GO (byte at +24)=0, READY (byte at +25)=0, READY_CNT (word at +26)=0
+        unsafe {
+            core::ptr::write_volatile((trampoline_phys_page as usize + 0x818) as *mut u8, 0u8);
+            core::ptr::write_volatile((trampoline_phys_page as usize + 0x819) as *mut u8, 0u8);
+            core::ptr::write_volatile((trampoline_phys_page as usize + 0x81A) as *mut u16, 0u16);
+        }
         // Allocate stacks array for up to 64 APs: write RSP entries at mailbox+64+(idx*8)
         for i in 0..64u32 {
             if let Some(stack) = crate::mm::uefi::alloc_pages(system_table, 1, uefi::table::boot::MemoryType::LOADER_DATA) {
@@ -97,6 +103,22 @@ pub fn wait_for_ap_ids(system_table: &SystemTable<Boot>, info: crate::arch::x86:
         }
         if nnz >= expected_ap_count { return expected_ap_count; }
         if waited >= timeout_us { return nnz; }
+        let _ = system_table.boot_services().stall(1000);
+        waited += 1000;
+    }
+}
+
+/// Signal APs to proceed (set GO=1) and wait until READY count matches observed APs or timeout.
+pub fn signal_and_wait_ready(system_table: &SystemTable<Boot>, info: crate::arch::x86::trampoline::TrampolineInfo, observed_ap_count: u32, timeout_us: u64) -> u32 {
+    let base = info.phys_base as usize + info.mailbox_offset as usize;
+    // Set GO flag (+24) = 1
+    unsafe { core::ptr::write_volatile((base + 24) as *mut u8, 1u8); }
+    // Wait READY_CNT (+26) to reach observed_ap_count
+    let mut waited = 0u64;
+    loop {
+        let ready = unsafe { core::ptr::read_volatile((base + 26) as *const u16) } as u32;
+        if ready >= observed_ap_count { return ready; }
+        if waited >= timeout_us { return ready; }
         let _ = system_table.boot_services().stall(1000);
         waited += 1000;
     }

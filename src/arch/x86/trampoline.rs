@@ -188,6 +188,12 @@ pub fn prepare_real_mode_trampoline(system_table: &SystemTable<Boot>) -> Option<
     let disp_ids = (mailbox_off as i32 + 32) - (lm_entry_off as i32 + 44);
     // For LEA RSI, [RIP+disp32] to RSP array base (mailbox+64), RIP at next (offset 57)
     let disp_rsp = (mailbox_off as i32 + 64) - (lm_entry_off as i32 + 57);
+    // For MOV AL, [RIP+disp32] to GO flag (mailbox+24), RIP at next (offset 70)
+    let disp_go = (mailbox_off as i32 + 24) - (lm_entry_off as i32 + 70);
+    // For MOV byte [RIP+disp32],1 to READY flag (mailbox+25), RIP at next (offset 82)
+    let disp_ready = (mailbox_off as i32 + 25) - (lm_entry_off as i32 + 82);
+    // For INC word [RIP+disp32] to READY count (mailbox+26), RIP at next (offset 89)
+    let disp_readycnt = (mailbox_off as i32 + 26) - (lm_entry_off as i32 + 89);
     unsafe {
         // C6 05 disp32 imm8
         core::ptr::write_volatile(lm_ptr.add(0), 0xC6u8);
@@ -241,10 +247,30 @@ pub fn prepare_real_mode_trampoline(system_table: &SystemTable<Boot>) -> Option<
         core::ptr::write_volatile(lm_ptr.add(58), 0x8Bu8);
         core::ptr::write_volatile(lm_ptr.add(59), 0x24u8);
         core::ptr::write_volatile(lm_ptr.add(60), 0xCEu8);
+        // wait loop: mov al,[rip+disp_go]; test al,al; jne +5; jmp -12
+        core::ptr::write_volatile(lm_ptr.add(61), 0x8Au8); // MOV AL, [RIP+disp32]
+        core::ptr::write_volatile(lm_ptr.add(62), 0x05u8);
+        core::ptr::write_volatile(lm_ptr.add(63) as *mut i32, disp_go);
+        core::ptr::write_volatile(lm_ptr.add(67), 0x84u8); // TEST AL, AL
+        core::ptr::write_volatile(lm_ptr.add(68), 0xC0u8);
+        core::ptr::write_volatile(lm_ptr.add(69), 0x75u8); // JNE +5
+        core::ptr::write_volatile(lm_ptr.add(70), 0x05u8);
+        core::ptr::write_volatile(lm_ptr.add(71), 0xEBu8); // JMP -12
+        core::ptr::write_volatile(lm_ptr.add(72), 0xF4u8);
+        // mov byte [rip+disp_ready], 1
+        core::ptr::write_volatile(lm_ptr.add(73), 0xC6u8);
+        core::ptr::write_volatile(lm_ptr.add(74), 0x05u8);
+        core::ptr::write_volatile(lm_ptr.add(75) as *mut i32, disp_ready);
+        core::ptr::write_volatile(lm_ptr.add(79), 0x01u8);
+        // inc word [rip+disp_readycnt]
+        core::ptr::write_volatile(lm_ptr.add(80), 0x66u8);
+        core::ptr::write_volatile(lm_ptr.add(81), 0xFFu8);
+        core::ptr::write_volatile(lm_ptr.add(82), 0x05u8);
+        core::ptr::write_volatile(lm_ptr.add(83) as *mut i32, disp_readycnt);
         // hlt; jmp $
-        core::ptr::write_volatile(lm_ptr.add(61), 0xF4u8);
-        core::ptr::write_volatile(lm_ptr.add(62), 0xEBu8);
-        core::ptr::write_volatile(lm_ptr.add(63), 0xFEu8);
+        core::ptr::write_volatile(lm_ptr.add(87), 0xF4u8);
+        core::ptr::write_volatile(lm_ptr.add(88), 0xEBu8);
+        core::ptr::write_volatile(lm_ptr.add(89), 0xFEu8);
     }
     // Compute SIPI vector (page number >> 12 lower 8 bits)
     let phys = page as u64;

@@ -204,6 +204,14 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
                     m3 += crate::firmware::acpi::u32_to_dec(observed, &mut b3[m3..]);
                     b3[m3] = b'\r'; m3 += 1; b3[m3] = b'\n'; m3 += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&b3[..m3]).unwrap_or("\r\n"));
+                    // Signal GO to APs and wait for READY count
+                    let ready = crate::arch::x86::smp::signal_and_wait_ready(&system_table, info, observed, 200_000);
+                    let mut b4 = [0u8; 64];
+                    let mut m4 = 0;
+                    for &b in b"SMP: AP READY=" { b4[m4] = b; m4 += 1; }
+                    m4 += crate::firmware::acpi::u32_to_dec(ready, &mut b4[m4..]);
+                    b4[m4] = b'\r'; m4 += 1; b4[m4] = b'\n'; m4 += 1;
+                    let _ = stdout.write_str(core::str::from_utf8(&b4[..m4]).unwrap_or("\r\n"));
                 }
 
                 // Report PM/LM success flags
