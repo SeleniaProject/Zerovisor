@@ -3,5 +3,8 @@
 pub mod cpuid;
 pub mod msr;
 pub mod vm;
+pub mod smp;
+pub mod lapic;
+pub mod trampoline;
 
 
