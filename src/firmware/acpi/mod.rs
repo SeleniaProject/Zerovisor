@@ -375,4 +375,108 @@ pub(crate) fn ivrs_summary(mut writer: impl FnMut(&str), hdr: &'static SdtHeader
     let _ = writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
 }
 
+/// Enumerate DMAR remapping structures (DRHD/RMRR/ATSR) with minimal fields.
+pub(crate) fn dmar_list_structs_from(mut writer: impl FnMut(&str), hdr: &'static SdtHeader) {
+    #[repr(C, packed)]
+    struct DmarTableHeader { header: SdtHeader, host_addr_width: u8, flags: u8, _rsvd: [u8; 10] }
+    let base = hdr as *const SdtHeader as usize;
+    let total_len = hdr.length as usize;
+    let off0 = core::mem::size_of::<DmarTableHeader>();
+    let mut off = off0;
+    while off + 4 <= total_len {
+        let p = (base + off) as *const u8;
+        let t0 = unsafe { p.read() } as u16;
+        let t1 = unsafe { p.add(1).read() } as u16;
+        let typ = t0 | ((t1 as u16) << 8);
+        let l0 = unsafe { p.add(2).read() } as u16;
+        let l1 = unsafe { p.add(3).read() } as u16;
+        let len = (l0 | ((l1 as u16) << 8)) as usize;
+        if len < 4 || off + len > total_len { break; }
+        // Format a short line: type/len and key fields if known
+        let mut buf = [0u8; 128];
+        let mut n = 0;
+        for &b in b"DMAR: struct type=" { buf[n] = b; n += 1; }
+        n += u32_to_dec(typ as u32, &mut buf[n..]);
+        for &b in b" len=" { buf[n] = b; n += 1; }
+        n += u32_to_dec(len as u32, &mut buf[n..]);
+        match typ {
+            0 => {
+                // DRHD: flags(1), rsvd(1), seg(2), reg_base(8)
+                if len >= 4 + 12 {
+                    let seg_lo = unsafe { p.add(6).read() } as u16;
+                    let seg_hi = unsafe { p.add(7).read() } as u16;
+                    let seg = (seg_lo | (seg_hi << 8)) as u32;
+                    let mut addr: u64 = 0;
+                    for i in 0..8 {
+                        addr |= (unsafe { p.add(8 + i).read() } as u64) << (i * 8);
+                    }
+                    for &b in b" seg=" { buf[n] = b; n += 1; }
+                    n += u32_to_dec(seg, &mut buf[n..]);
+                    for &b in b" reg=0x" { buf[n] = b; n += 1; }
+                    n += u64_to_hex(addr, &mut buf[n..]);
+                }
+            }
+            1 => {
+                // RMRR: rsvd(2), seg(2), base(8), limit(8)
+                if len >= 4 + 20 {
+                    let seg_lo = unsafe { p.add(4).read() } as u16;
+                    let seg_hi = unsafe { p.add(5).read() } as u16;
+                    let seg = (seg_lo | (seg_hi << 8)) as u32;
+                    let mut base64: u64 = 0; let mut limit64: u64 = 0;
+                    for i in 0..8 { base64 |= (unsafe { p.add(6 + i).read() } as u64) << (i * 8); }
+                    for i in 0..8 { limit64 |= (unsafe { p.add(14 + i).read() } as u64) << (i * 8); }
+                    for &b in b" seg=" { buf[n] = b; n += 1; }
+                    n += u32_to_dec(seg, &mut buf[n..]);
+                    for &b in b" range=0x" { buf[n] = b; n += 1; }
+                    n += u64_to_hex(base64, &mut buf[n..]);
+                    for &b in b"-0x" { buf[n] = b; n += 1; }
+                    n += u64_to_hex(limit64, &mut buf[n..]);
+                }
+            }
+            2 => {
+                // ATSR: flags(1) at +4, reserved(1) at +5, segment(2) at +6..+7
+                if len >= 8 {
+                    let flags = unsafe { p.add(4).read() } as u32;
+                    let seg_lo = unsafe { p.add(6).read() } as u16;
+                    let seg_hi = unsafe { p.add(7).read() } as u16;
+                    let seg = (seg_lo | (seg_hi << 8)) as u32;
+                    for &b in b" seg=" { buf[n] = b; n += 1; }
+                    n += u32_to_dec(seg, &mut buf[n..]);
+                    for &b in b" flags=0x" { buf[n] = b; n += 1; }
+                    n += u64_to_hex(flags as u64, &mut buf[n..]);
+                }
+            }
+            _ => {}
+        }
+        buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
+        writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+        off += len;
+    }
+}
+
+/// Enumerate IVRS entries (type and length only, safe header walk).
+pub(crate) fn ivrs_list_entries_from(mut writer: impl FnMut(&str), hdr: &'static SdtHeader) {
+    #[repr(C, packed)] struct IvrsTableHeader { header: SdtHeader, iv_info: u32 }
+    let base = hdr as *const SdtHeader as usize;
+    let total = hdr.length as usize;
+    let mut off = core::mem::size_of::<IvrsTableHeader>();
+    while off + 4 <= total {
+        let p = (base + off) as *const u8;
+        let entry_type = unsafe { p.read() } as u32;
+        let len_lo = unsafe { p.add(2).read() } as u16;
+        let len_hi = unsafe { p.add(3).read() } as u16;
+        let len = (len_lo | (len_hi << 8)) as usize;
+        if len < 4 || off + len > total { break; }
+        let mut buf = [0u8; 96];
+        let mut n = 0;
+        for &b in b"IVRS: entry type=" { buf[n] = b; n += 1; }
+        n += u32_to_dec(entry_type, &mut buf[n..]);
+        for &b in b" len=" { buf[n] = b; n += 1; }
+        n += u32_to_dec(len as u32, &mut buf[n..]);
+        buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
+        writer(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+        off += len;
+    }
+}
+
 

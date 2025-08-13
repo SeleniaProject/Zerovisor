@@ -45,9 +45,15 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         if b_ept { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_EPT)); }
         if b_npt { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_NPT)); }
         if b_dmar { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_VTD)); }
-        if let Some(h) = dmar_hdr { crate::firmware::acpi::dmar_summary(|s| { let _ = stdout.write_str(s); }, h); }
+        if let Some(h) = dmar_hdr {
+            crate::firmware::acpi::dmar_summary(|s| { let _ = stdout.write_str(s); }, h);
+            crate::firmware::acpi::dmar_list_structs_from(|s| { let _ = stdout.write_str(s); }, h);
+        }
         if b_ivrs { let _ = stdout.write_str(i18n::t(lang, i18n::key::FEAT_AMDVI)); }
-        if let Some(h) = ivrs_hdr { crate::firmware::acpi::ivrs_summary(|s| { let _ = stdout.write_str(s); }, h); }
+        if let Some(h) = ivrs_hdr {
+            crate::firmware::acpi::ivrs_summary(|s| { let _ = stdout.write_str(s); }, h);
+            crate::firmware::acpi::ivrs_list_entries_from(|s| { let _ = stdout.write_str(s); }, h);
+        }
     }
 
     // ACPI discovery: Check presence of RSDP and core tables
