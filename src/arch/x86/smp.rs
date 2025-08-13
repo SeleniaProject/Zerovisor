@@ -69,12 +69,15 @@ pub fn write_ap_cr3_mailbox(system_table: &SystemTable<Boot>, trampoline_phys_pa
         // counter at 0x800, CR3 at 0x802..0x809
         let ptr = (trampoline_phys_page as usize + 0x802) as *mut u64;
         unsafe { core::ptr::write_volatile(ptr, cr3); }
-        // Place a default RSP (stack pointer) at mailbox+16..+23 to be loaded by AP in long mode stub.
-        // Allocate one page per AP stack base (for demo, one page shared as placeholder).
-        if let Some(stack) = crate::mm::uefi::alloc_pages(system_table, 1, uefi::table::boot::MemoryType::LOADER_DATA) {
-            let rsp = unsafe { stack.add(4096) } as u64; // top of the page
-            let rsp_ptr = (trampoline_phys_page as usize + 0x810) as *mut u64;
-            unsafe { core::ptr::write_volatile(rsp_ptr, rsp); }
+        // Allocate stacks array for up to 64 APs: write RSP entries at mailbox+64+(idx*8)
+        for i in 0..64u32 {
+            if let Some(stack) = crate::mm::uefi::alloc_pages(system_table, 1, uefi::table::boot::MemoryType::LOADER_DATA) {
+                let rsp = unsafe { stack.add(4096) } as u64;
+                let rsp_ptr = (trampoline_phys_page as usize + 0x840 + (i as usize) * 8) as *mut u64;
+                unsafe { core::ptr::write_volatile(rsp_ptr, rsp); }
+            } else {
+                break;
+            }
         }
     }
 }

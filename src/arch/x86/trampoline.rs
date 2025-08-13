@@ -186,8 +186,8 @@ pub fn prepare_real_mode_trampoline(system_table: &SystemTable<Boot>) -> Option<
     let disp_count = (mailbox_off as i32 + 6) - (lm_entry_off as i32 + 37);
     // For LEA RDX, [RIP+disp32] to IDs base (mailbox+32), RIP at next (offset 44)
     let disp_ids = (mailbox_off as i32 + 32) - (lm_entry_off as i32 + 44);
-    // For MOV RSP, [RIP+disp32], RIP points to next instruction (offset 51)
-    let disp16 = (mailbox_off as i32 + 16) - (lm_entry_off as i32 + 51);
+    // For LEA RSI, [RIP+disp32] to RSP array base (mailbox+64), RIP at next (offset 57)
+    let disp_rsp = (mailbox_off as i32 + 64) - (lm_entry_off as i32 + 57);
     unsafe {
         // C6 05 disp32 imm8
         core::ptr::write_volatile(lm_ptr.add(0), 0xC6u8);
@@ -231,15 +231,20 @@ pub fn prepare_real_mode_trampoline(system_table: &SystemTable<Boot>) -> Option<
         core::ptr::write_volatile(lm_ptr.add(47), 0x88u8);
         core::ptr::write_volatile(lm_ptr.add(48), 0x1Cu8);
         core::ptr::write_volatile(lm_ptr.add(49), 0x0Au8);
-        // mov rsp, qword [rip+disp32]  (48 8B 25 disp32)
+        // lea rsi, [rip+disp32] (48 8D 35 disp32)
         core::ptr::write_volatile(lm_ptr.add(50), 0x48u8);
-        core::ptr::write_volatile(lm_ptr.add(51), 0x8Bu8);
-        core::ptr::write_volatile(lm_ptr.add(52), 0x25u8);
-        core::ptr::write_volatile(lm_ptr.add(53) as *mut i32, disp16);
+        core::ptr::write_volatile(lm_ptr.add(51), 0x8Du8);
+        core::ptr::write_volatile(lm_ptr.add(52), 0x35u8);
+        core::ptr::write_volatile(lm_ptr.add(53) as *mut i32, disp_rsp);
+        // mov rsp, qword [rsi + rcx*8]  (48 8B 24 CE)
+        core::ptr::write_volatile(lm_ptr.add(57), 0x48u8);
+        core::ptr::write_volatile(lm_ptr.add(58), 0x8Bu8);
+        core::ptr::write_volatile(lm_ptr.add(59), 0x24u8);
+        core::ptr::write_volatile(lm_ptr.add(60), 0xCEu8);
         // hlt; jmp $
-        core::ptr::write_volatile(lm_ptr.add(57), 0xF4u8);
-        core::ptr::write_volatile(lm_ptr.add(58), 0xEBu8);
-        core::ptr::write_volatile(lm_ptr.add(59), 0xFEu8);
+        core::ptr::write_volatile(lm_ptr.add(61), 0xF4u8);
+        core::ptr::write_volatile(lm_ptr.add(62), 0xEBu8);
+        core::ptr::write_volatile(lm_ptr.add(63), 0xFEu8);
     }
     // Compute SIPI vector (page number >> 12 lower 8 bits)
     let phys = page as u64;
