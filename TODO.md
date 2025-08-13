@@ -4,19 +4,20 @@
   - 目的: UEFI上で起動し、画面に初期化ログを表示（英語メッセージで最小確認）
   - 備考: `.cargo/config.toml` は未作成（ターゲット指定はビルドコマンドで実施）
   - 工数: 中
-- [ ] タスク: CPUID/MSRユーティリティ（Rust `asm!`）実装
+- [x] タスク: CPUID/MSRユーティリティ（Rust `asm!`）実装
   - 成果物: `src/arch/x86/cpuid.rs`, `src/arch/x86/msr.rs`
-  - 目的: VMX/SVM、EPT/NPT、VT‑d/AMD‑VIの存在検出
+  - 目的: VMX/SVM、EPT/NPT、VT‑d/AMD‑VIの存在検出（MSR書込みは未使用／安全側）
   - 工数: 中
-- [ ] タスク: 多言語ログ（日本語/英語最小）
+- [x] タスク: 多言語ログ（日本語/英語最小）
   - 成果物: `src/i18n/mod.rs`, `lang/*.json`
-  - 目的: ログメッセージを言語切替
+  - 目的: ログメッセージを言語切替（現状は英語既定、将来`PlatformLang`対応予定）
   - 工数: 小
 
 ### フェーズ2: ACPIとSMP初期化
-- [ ] タスク: ACPIテーブル走査（RSDP→XSDT→FADT/MADT/MCFG）
+- [x] タスク: ACPIテーブル走査（RSDP→XSDT→FADT/MADT/MCFG）
   - 成果物: `src/firmware/acpi/*.rs`
   - 目的: CPUトポロジ、APIC情報、PCIe設定空間の基礎入手
+  - 追記: DMAR/IVRSの検出とヘッダ要約・エントリ概要（DRHD/RMRR/ATSR/IVRS entries）を起動時に出力
   - 工数: 中
 - [ ] タスク: AP起動（SMP bring‑up）とタイムソース初期化
   - 成果物: `src/arch/x86/smp.rs`, `src/time/*.rs`
@@ -69,7 +70,7 @@
 - [ ] タスク: トレース（VM‑Entry/Exit、EPT操作）
   - 成果物: `src/obs/trace.rs`（設計）
   - 工数: 中
-- [ ] タスク: 多言語辞書（CLI/ログ）
+- [x] タスク: 多言語辞書（CLI/ログ）
   - 成果物: `lang/ja.json`, `lang/en.json`, `lang/zh.json`
   - 工数: 小
 
