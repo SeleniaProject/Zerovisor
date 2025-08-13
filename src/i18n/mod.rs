@@ -72,6 +72,18 @@ pub mod key {
     pub const FEAT_NPT: &str = "feat_npt";
     pub const FEAT_VTD: &str = "feat_vtd";
     pub const FEAT_AMDVI: &str = "feat_amdvi";
+    pub const HPET_PRESENT: &str = "hpet_present";
+    pub const HPET_NOT_FOUND: &str = "hpet_not_found";
+    pub const SMP_EXPECTED: &str = "smp_expected";
+    pub const SMP_OBSERVED: &str = "smp_observed";
+    pub const SMP_PM_OK: &str = "smp_pm_ok";
+    pub const SMP_PM_NG: &str = "smp_pm_ng";
+    pub const SMP_LM_OK: &str = "smp_lm_ok";
+    pub const SMP_LM_NG: &str = "smp_lm_ng";
+    pub const SMP_LM_COUNT: &str = "smp_lm_count";
+    pub const SMP_APIC_BYTE: &str = "smp_apic_byte";
+    pub const SMP_AP_IDS: &str = "smp_ap_ids";
+    pub const SMP_READY: &str = "smp_ready";
 }
 
 /// Resolve a message key for a given language.
@@ -88,6 +100,18 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::FEAT_NPT => "Feature: AMD NPT\r\n",
             key::FEAT_VTD => "Feature: Intel VT-d (ACPI DMAR)\r\n",
             key::FEAT_AMDVI => "Feature: AMD-Vi (ACPI IVRS)\r\n",
+            key::HPET_PRESENT => "HPET: present, base=0x",
+            key::HPET_NOT_FOUND => "HPET: not found\r\n",
+            key::SMP_EXPECTED => "SMP: expected CPUs=",
+            key::SMP_OBSERVED => "SMP: observed AP IDs=",
+            key::SMP_PM_OK => "SMP: AP PM-entry OK\r\n",
+            key::SMP_PM_NG => "SMP: AP PM-entry not observed\r\n",
+            key::SMP_LM_OK => "SMP: AP LM-entry OK\r\n",
+            key::SMP_LM_NG => "SMP: AP LM-entry not observed\r\n",
+            key::SMP_LM_COUNT => "SMP: AP LM-count=",
+            key::SMP_APIC_BYTE => "SMP: AP APIC-ID(byte)=",
+            key::SMP_AP_IDS => "SMP: AP IDs=",
+            key::SMP_READY => "SMP: AP READY=",
             _ => "\r\n",
         },
         Lang::Ja => match key {
@@ -100,6 +124,18 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::FEAT_NPT => "機能: AMD NPT\r\n",
             key::FEAT_VTD => "機能: Intel VT-d（ACPI DMAR）\r\n",
             key::FEAT_AMDVI => "機能: AMD-Vi（ACPI IVRS）\r\n",
+            key::HPET_PRESENT => "HPET: 検出 base=0x",
+            key::HPET_NOT_FOUND => "HPET: 見つかりません\r\n",
+            key::SMP_EXPECTED => "SMP: 期待CPU数=",
+            key::SMP_OBSERVED => "SMP: 観測AP ID数=",
+            key::SMP_PM_OK => "SMP: AP 保護モード到達 OK\r\n",
+            key::SMP_PM_NG => "SMP: AP 保護モード未到達\r\n",
+            key::SMP_LM_OK => "SMP: AP 長モード到達 OK\r\n",
+            key::SMP_LM_NG => "SMP: AP 長モード未到達\r\n",
+            key::SMP_LM_COUNT => "SMP: AP 長モード回数=",
+            key::SMP_APIC_BYTE => "SMP: AP APIC-ID(下位1B)=",
+            key::SMP_AP_IDS => "SMP: AP ID配列=",
+            key::SMP_READY => "SMP: AP READY=",
             _ => "\r\n",
         },
         Lang::Zh => match key {
@@ -112,6 +148,18 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::FEAT_NPT => "功能: AMD NPT\r\n",
             key::FEAT_VTD => "功能: Intel VT-d（ACPI DMAR）\r\n",
             key::FEAT_AMDVI => "功能: AMD-Vi（ACPI IVRS）\r\n",
+            key::HPET_PRESENT => "HPET: 已检测 base=0x",
+            key::HPET_NOT_FOUND => "HPET: 未找到\r\n",
+            key::SMP_EXPECTED => "SMP: 预期CPU数=",
+            key::SMP_OBSERVED => "SMP: 已观测AP ID数=",
+            key::SMP_PM_OK => "SMP: AP 保护模式就绪\r\n",
+            key::SMP_PM_NG => "SMP: AP 保护模式未就绪\r\n",
+            key::SMP_LM_OK => "SMP: AP 长模式就绪\r\n",
+            key::SMP_LM_NG => "SMP: AP 长模式未就绪\r\n",
+            key::SMP_LM_COUNT => "SMP: AP 长模式计数=",
+            key::SMP_APIC_BYTE => "SMP: AP APIC-ID(低1字节)=",
+            key::SMP_AP_IDS => "SMP: AP ID列表=",
+            key::SMP_READY => "SMP: AP READY=",
             _ => "\r\n",
         },
     }
