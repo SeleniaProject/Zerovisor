@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uefi::prelude::Boot;
 use uefi::table::SystemTable;
 
@@ -91,6 +91,49 @@ impl Vm {
 
     pub fn resume(&self) {
         crate::obs::trace::emit(crate::obs::trace::Event::VmStart(self.id.0));
+    }
+}
+
+// ---- Minimal VM registry for control-plane operations ----
+
+#[derive(Clone, Copy, Debug)]
+pub struct VmInfo {
+    pub id: u64,
+    pub vendor: HvVendor,
+    pub pml4_phys: u64,
+    pub memory_bytes: u64,
+}
+
+const VM_REG_CAP: usize = 16;
+static VM_REG_LEN: AtomicUsize = AtomicUsize::new(0);
+static mut VM_REG: [VmInfo; VM_REG_CAP] = [VmInfo { id: 0, vendor: HvVendor::Unknown, pml4_phys: 0, memory_bytes: 0 }; VM_REG_CAP];
+
+/// Register a VM for later lookup by id. Returns true on success.
+pub fn register_vm(vm: &Vm) -> bool {
+    let idx = VM_REG_LEN.load(Ordering::Relaxed);
+    if idx >= VM_REG_CAP { return false; }
+    let info = VmInfo { id: vm.id.0, vendor: vm.vendor, pml4_phys: vm.pml4_phys, memory_bytes: vm.config.memory_bytes.max(1u64 << 30) };
+    unsafe { VM_REG[idx] = info; }
+    VM_REG_LEN.store(idx + 1, Ordering::Relaxed);
+    true
+}
+
+/// Find a VM by id and return its snapshot info.
+pub fn find_vm(id: u64) -> Option<VmInfo> {
+    let len = VM_REG_LEN.load(Ordering::Relaxed);
+    for i in 0..len {
+        let info = unsafe { VM_REG[i] };
+        if info.id == id { return Some(info); }
+    }
+    None
+}
+
+/// Iterate registered VMs.
+pub fn list_vms(mut f: impl FnMut(VmInfo)) {
+    let len = VM_REG_LEN.load(Ordering::Relaxed);
+    for i in 0..len {
+        let info = unsafe { VM_REG[i] };
+        if info.id != 0 { f(info); }
     }
 }
 
