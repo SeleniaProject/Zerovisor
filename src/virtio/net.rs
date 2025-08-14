@@ -464,3 +464,48 @@ pub fn tx_send(system_table: &mut SystemTable<Boot>, data: &[u8]) -> usize {
 }
 
 
+/// Initialize both TX and RX queues for virtio-net.
+pub fn init(system_table: &mut SystemTable<Boot>) -> bool {
+    let tx_ok = init_tx(system_table);
+    let rx_ok = init_rx(system_table);
+    tx_ok && rx_ok
+}
+
+/// Parse ASCII hex like "DE AD BE EF" into a buffer and transmit.
+pub fn tx_send_hex(system_table: &mut SystemTable<Boot>, hex: &str) -> usize {
+    let mut buf = [0u8; 1500];
+    let mut n = 0usize;
+    let bytes = hex.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        // skip separators
+        while i < bytes.len() {
+            let c = bytes[i];
+            let is_sep = c == b' ' || c == b':' || c == b',' || c == b'\t' || c == b'\n' || c == b'\r';
+            if !is_sep { break; }
+            i += 1;
+        }
+        if i >= bytes.len() { break; }
+        // read up to two hex chars
+        let mut val: u8 = 0; let mut nyb = 0u8;
+        for _k in 0..2 {
+            if i >= bytes.len() { break; }
+            let c = bytes[i];
+            let d = if c >= b'0' && c <= b'9' { c - b'0' }
+                    else if c >= b'a' && c <= b'f' { 10 + (c - b'a') }
+                    else if c >= b'A' && c <= b'F' { 10 + (c - b'A') }
+                    else { 0xFF };
+            if d == 0xFF { break; }
+            val = if nyb == 0 { d << 4 } else { val | d };
+            nyb += 1; i += 1;
+        }
+        if nyb == 0 { break; }
+        if nyb == 1 { // single nibble like "A" -> 0x0A
+            val = val & 0xF0;
+        }
+        if n < buf.len() { buf[n] = val; n += 1; } else { break; }
+    }
+    if n == 0 { return 0; }
+    tx_send(system_table, &buf[..n])
+}
+
