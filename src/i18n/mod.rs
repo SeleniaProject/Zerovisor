@@ -169,6 +169,24 @@ pub mod key {
     pub const SEC_NXE_OFF: &str = "sec_nxe_off";
     pub const SEC_SUMMARY_OK: &str = "sec_summary_ok";
     pub const SEC_SUMMARY_NG: &str = "sec_summary_ng";
+    pub const MIG_TRACK_START_OK: &str = "migrate_track_start_ok";
+    pub const MIG_TRACK_START_FAIL: &str = "migrate_track_start_fail";
+    pub const MIG_TRACK_STOP_OK: &str = "migrate_track_stop_ok";
+    pub const MIG_TRACK_STOP_FAIL: &str = "migrate_track_stop_fail";
+    pub const MIG_CHAN_NEW_OK: &str = "migrate_chan_new_ok";
+    pub const MIG_CHAN_NEW_FAIL: &str = "migrate_chan_new_fail";
+    pub const MIG_CHAN_CLEARED: &str = "migrate_chan_cleared";
+    pub const MIG_NO_BUFFER: &str = "migrate_no_buffer";
+    pub const MIG_NET_MAC_PREFIX: &str = "migrate_net_mac_prefix";
+    pub const MIG_NET_MTU_PREFIX: &str = "migrate_net_mtu_prefix";
+    pub const MIG_NET_MAC_UPDATED: &str = "migrate_net_mac_updated";
+    pub const MIG_NET_MTU_UPDATED: &str = "migrate_net_mtu_updated";
+    pub const MIG_NET_USAGE: &str = "migrate_net_usage";
+    pub const MIG_NET_MAC_USAGE: &str = "migrate_net_mac_usage";
+    pub const MIG_NET_MTU_USAGE: &str = "migrate_net_mtu_usage";
+    pub const MIG_NET_ETHER_PREFIX: &str = "migrate_net_ether_prefix";
+    pub const MIG_NET_ETHER_UPDATED: &str = "migrate_net_ether_updated";
+    pub const MIG_NET_ETHER_USAGE: &str = "migrate_net_ether_usage";
 }
 
 /// Resolve a message key for a given language.
@@ -215,6 +233,24 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::SEC_NXE_OFF => "Security: EFER.NXE=OFF\r\n",
             key::SEC_SUMMARY_OK => "Security: protections OK (WP/SMEP/SMAP/NXE)\r\n",
             key::SEC_SUMMARY_NG => "Security: protections NOT fully enabled\r\n",
+            key::MIG_TRACK_START_OK => "migrate: tracking started\r\n",
+            key::MIG_TRACK_START_FAIL => "migrate: start failed\r\n",
+            key::MIG_TRACK_STOP_OK => "migrate: tracking stopped\r\n",
+            key::MIG_TRACK_STOP_FAIL => "migrate: stop failed\r\n",
+            key::MIG_CHAN_NEW_OK => "migrate: chan new ok\r\n",
+            key::MIG_CHAN_NEW_FAIL => "migrate: chan new failed\r\n",
+            key::MIG_CHAN_CLEARED => "migrate: chan cleared\r\n",
+            key::MIG_NO_BUFFER => "migrate: no buffer\r\n",
+            key::MIG_NET_MAC_PREFIX => "net: mac=",
+            key::MIG_NET_MTU_PREFIX => "net: mtu=",
+            key::MIG_NET_MAC_UPDATED => "net: mac updated\r\n",
+            key::MIG_NET_MTU_UPDATED => "net: mtu updated\r\n",
+            key::MIG_NET_USAGE => "usage: migrate net [mac|mtu] ...\r\n",
+            key::MIG_NET_MAC_USAGE => "usage: migrate net mac [get|set xx:xx:xx:xx:xx:xx]\r\n",
+            key::MIG_NET_MTU_USAGE => "usage: migrate net mtu [get|set <n>]\r\n",
+            key::MIG_NET_ETHER_PREFIX => "net: ether=0x",
+            key::MIG_NET_ETHER_UPDATED => "net: ether updated\r\n",
+            key::MIG_NET_ETHER_USAGE => "usage: migrate net ether [get|set <hex>]\r\n",
             _ => "\r\n",
         },
         Lang::Ja => match key {
@@ -257,6 +293,24 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::SEC_NXE_OFF => "セキュリティ: EFER.NXE=無効\r\n",
             key::SEC_SUMMARY_OK => "セキュリティ: 保護は有効（WP/SMEP/SMAP/NXE）\r\n",
             key::SEC_SUMMARY_NG => "セキュリティ: 保護が十分ではありません\r\n",
+            key::MIG_TRACK_START_OK => "migrate: 追跡を開始しました\r\n",
+            key::MIG_TRACK_START_FAIL => "migrate: 開始に失敗しました\r\n",
+            key::MIG_TRACK_STOP_OK => "migrate: 追跡を停止しました\r\n",
+            key::MIG_TRACK_STOP_FAIL => "migrate: 停止に失敗しました\r\n",
+            key::MIG_CHAN_NEW_OK => "migrate: チャネル作成に成功\r\n",
+            key::MIG_CHAN_NEW_FAIL => "migrate: チャネル作成に失敗\r\n",
+            key::MIG_CHAN_CLEARED => "migrate: チャネルをクリアしました\r\n",
+            key::MIG_NO_BUFFER => "migrate: バッファがありません\r\n",
+            key::MIG_NET_MAC_PREFIX => "net: MAC=",
+            key::MIG_NET_MTU_PREFIX => "net: MTU=",
+            key::MIG_NET_MAC_UPDATED => "net: MACを更新しました\r\n",
+            key::MIG_NET_MTU_UPDATED => "net: MTUを更新しました\r\n",
+            key::MIG_NET_USAGE => "usage: migrate net [mac|mtu] ...\r\n",
+            key::MIG_NET_MAC_USAGE => "usage: migrate net mac [get|set xx:xx:xx:xx:xx:xx]\r\n",
+            key::MIG_NET_MTU_USAGE => "usage: migrate net mtu [get|set <n>]\r\n",
+            key::MIG_NET_ETHER_PREFIX => "net: EtherType=0x",
+            key::MIG_NET_ETHER_UPDATED => "net: EtherTypeを更新しました\r\n",
+            key::MIG_NET_ETHER_USAGE => "usage: migrate net ether [get|set <hex>]\r\n",
             _ => "\r\n",
         },
         Lang::Zh => match key {
@@ -299,6 +353,24 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::SEC_NXE_OFF => "安全: EFER.NXE=未启用\r\n",
             key::SEC_SUMMARY_OK => "安全: 保护正常（WP/SMEP/SMAP/NXE）\r\n",
             key::SEC_SUMMARY_NG => "安全: 保护未完全启用\r\n",
+            key::MIG_TRACK_START_OK => "migrate: 已开始跟踪\r\n",
+            key::MIG_TRACK_START_FAIL => "migrate: 启动失败\r\n",
+            key::MIG_TRACK_STOP_OK => "migrate: 已停止跟踪\r\n",
+            key::MIG_TRACK_STOP_FAIL => "migrate: 停止失败\r\n",
+            key::MIG_CHAN_NEW_OK => "migrate: 通道创建成功\r\n",
+            key::MIG_CHAN_NEW_FAIL => "migrate: 通道创建失败\r\n",
+            key::MIG_CHAN_CLEARED => "migrate: 通道已清空\r\n",
+            key::MIG_NO_BUFFER => "migrate: 无缓冲区\r\n",
+            key::MIG_NET_MAC_PREFIX => "net: MAC=",
+            key::MIG_NET_MTU_PREFIX => "net: MTU=",
+            key::MIG_NET_MAC_UPDATED => "net: 已更新MAC\r\n",
+            key::MIG_NET_MTU_UPDATED => "net: 已更新MTU\r\n",
+            key::MIG_NET_USAGE => "usage: migrate net [mac|mtu] ...\r\n",
+            key::MIG_NET_MAC_USAGE => "usage: migrate net mac [get|set xx:xx:xx:xx:xx:xx]\r\n",
+            key::MIG_NET_MTU_USAGE => "usage: migrate net mtu [get|set <n>]\r\n",
+            key::MIG_NET_ETHER_PREFIX => "net: EtherType=0x",
+            key::MIG_NET_ETHER_UPDATED => "net: 已更新EtherType\r\n",
+            key::MIG_NET_ETHER_USAGE => "usage: migrate net ether [get|set <hex>]\r\n",
             _ => "\r\n",
         },
     }
