@@ -69,7 +69,133 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
         let cmd = core::str::from_utf8(&buf[..len]).unwrap_or("").trim();
         if cmd.eq_ignore_ascii_case("help") {
             let stdout = system_table.stdout();
-            let _ = stdout.write_str("Commands: help | version | info | virtio | iommu | pci | pci find [vid=<hex>] [did=<hex>] | pci class <cc> <sc> | vm | vm pause|vm resume | trace | trace clear | metrics | metrics clear | audit | logs | logs filter [level=<info|warn|error>] [cat=<prefix>] | loglevel [info|warn|error] | time [show|wait <usec> [busy|stall]] | wdog [off|<secs>] | sec | lang [en|ja|zh|auto] | dump [regs|idt|gdt] | quit\r\n");
+            let _ = stdout.write_str("Commands: help | version | info | virtio | iommu | pci | pci find [vid=<hex>] [did=<hex>] | pci class <cc> <sc> | vm | vm pause|vm resume | vm list | migrate | migrate start|migrate start id=<id>|migrate scan [clear] | migrate plan | migrate export start=<hex> len=<hex> [sink=console|null|buffer|snp|virtio] | migrate precopy [rounds=<n>] [clear] [sink=console|null|buffer|snp|virtio] | migrate precopy-throttle [rounds=<n>] [clear] [sink=console|null|buffer|snp|virtio] rate=<kbps> | migrate send-dirty [compress] [sink=console|null|buffer|snp|virtio] | migrate resend from=<seq> [count=<n>] [compress] [sink=console|null|buffer|snp|virtio] | migrate ctrl ack <seq> [sink=console|null|buffer|snp|virtio] | migrate ctrl nak <seq> [sink=console|null|buffer|snp|virtio] | migrate chan new [pages=<n>] | migrate chan clear | migrate chan dump [len=<n>] [hex] | migrate chan chunk [get|set <bytes>] | migrate chan consume <bytes> | migrate net mac [get|set xx:xx:xx:xx:xx:xx] | migrate net mtu [get|set <n>] | migrate net ether [get|set <hex>] | snp [discover|use <idx>|info|pump [limit=<n>] | poll [cycles=<n>] [sleep=<us>] [ctrl] [verify] [empty=<n>]] | virtio net pump [limit=<n>] | virtio net poll [cycles=<n>] [sleep=<us>] [ctrl] [verify] [empty=<n>] | migrate ctrl resend-sink [console|null|buffer|snp|virtio] | migrate ctrl auto-ack [on|off] | migrate ctrl auto-nak [on|off] | migrate default-sink [console|null|buffer|snp|virtio] | migrate txlog [count=<n>] | migrate reset | migrate cfg save|load | migrate session start|elapsed|bw|bw_net | migrate summary | migrate handle-ctrl [limit=<n>] | migrate verify [limit=<n>] [quiet] | migrate replay [pages=<n>] | migrate export-dirty | migrate stop | trace | trace clear | metrics | metrics clear | audit | logs | logs filter [level=<info|warn|error>] [cat=<prefix>] | loglevel [info|warn|error] | time [show|wait <usec> [busy|stall]] | wdog [off|<secs>] | sec | lang [en|ja|zh|auto] | dump [regs|idt|gdt] | quit\r\n");
+        if cmd.starts_with("virtio net pump") {
+            // virtio net pump [limit=<n>]
+            let rest = cmd.strip_prefix("virtio net pump").unwrap_or("").trim();
+            let mut limit: usize = 0;
+            for tok in rest.split_whitespace() { if let Some(v) = tok.strip_prefix("limit=") { let _ = v.parse::<usize>().map(|n| limit = n); } }
+            crate::virtio::net::rx_pump(system_table, limit);
+            continue;
+        }
+        if cmd.starts_with("virtio net poll") {
+            // virtio net poll [cycles=<n>] [sleep=<us>] [ctrl] [verify] [empty=<n>]
+            let rest = cmd.strip_prefix("virtio net poll").unwrap_or("").trim();
+            let mut cycles: usize = 0; let mut sleep_us: usize = 1000; let mut do_ctrl = false; let mut do_verify = false; let mut empty: usize = 0;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("cycles=") { let _ = v.parse::<usize>().map(|n| cycles = n); continue; }
+                if let Some(v) = tok.strip_prefix("sleep=") { let _ = v.parse::<usize>().map(|n| sleep_us = n); continue; }
+                if let Some(v) = tok.strip_prefix("empty=") { let _ = v.parse::<usize>().map(|n| empty = n); continue; }
+                if tok.eq_ignore_ascii_case("ctrl") { do_ctrl = true; continue; }
+                if tok.eq_ignore_ascii_case("verify") { do_verify = true; continue; }
+            }
+            crate::migrate::virtio_poll_ex(system_table, cycles, sleep_us, do_ctrl, do_verify, empty);
+            continue;
+        }
+        if cmd.starts_with("migrate default-sink ") {
+            let v = &cmd[21..].trim();
+            let sink = if v.eq_ignore_ascii_case("console") { crate::migrate::ExportSink::Console }
+                       else if v.eq_ignore_ascii_case("null") { crate::migrate::ExportSink::Null }
+                       else if v.eq_ignore_ascii_case("buffer") { crate::migrate::ExportSink::Buffer }
+                       else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                       else if v.eq_ignore_ascii_case("virtio") { crate::migrate::ExportSink::Virtio }
+                       else { crate::migrate::ExportSink::Buffer };
+            crate::migrate::set_default_sink(sink);
+            let _ = system_table.stdout().write_str("migrate: default sink updated\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate ctrl auto-ack ") {
+            let v = &cmd[22..].trim();
+            crate::migrate::ctrl_set_auto_ack(v.eq_ignore_ascii_case("on"));
+            let _ = system_table.stdout().write_str("migrate: ctrl auto-ack updated\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate ctrl auto-nak ") {
+            let v = &cmd[22..].trim();
+            crate::migrate::ctrl_set_auto_nak(v.eq_ignore_ascii_case("on"));
+            let _ = system_table.stdout().write_str("migrate: ctrl auto-nak updated\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate ctrl resend-sink ") {
+            let v = &cmd[25..].trim();
+            let sink = if v.eq_ignore_ascii_case("console") { crate::migrate::ExportSink::Console }
+                       else if v.eq_ignore_ascii_case("null") { crate::migrate::ExportSink::Null }
+                       else if v.eq_ignore_ascii_case("buffer") { crate::migrate::ExportSink::Buffer }
+                       else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                       else { crate::migrate::ExportSink::Buffer };
+            crate::migrate::ctrl_set_resend_sink(sink);
+            let _ = system_table.stdout().write_str("migrate: ctrl resend-sink updated\r\n");
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("snp discover") {
+            crate::migrate::snp_discover(system_table);
+            continue;
+        }
+        if cmd.starts_with("snp use ") {
+            let rest = &cmd[8..].trim();
+            if let Ok(idx) = rest.parse::<usize>() { crate::migrate::snp_use(system_table, idx); continue; }
+            let _ = system_table.stdout().write_str("usage: snp use <index>\r\n");
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("snp info") {
+            crate::migrate::snp_info(system_table);
+            continue;
+        }
+        if cmd.starts_with("snp pump") {
+            // snp pump [limit=<n>]
+            let rest = cmd.strip_prefix("snp pump").unwrap_or("").trim();
+            let mut limit: usize = 0;
+            for tok in rest.split_whitespace() { if let Some(v) = tok.strip_prefix("limit=") { let _ = v.parse::<usize>().map(|n| limit = n); } }
+            crate::migrate::snp_pump(system_table, limit);
+            continue;
+        }
+        if cmd.starts_with("snp poll") {
+            // snp poll [cycles=<n>] [sleep=<us>] [ctrl] [verify] [empty=<n>]
+            let rest = cmd.strip_prefix("snp poll").unwrap_or("").trim();
+            let mut cycles: usize = 0; let mut sleep_us: usize = 1000; let mut do_ctrl = false; let mut do_verify = false; let mut empty: usize = 0;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("cycles=") { let _ = v.parse::<usize>().map(|n| cycles = n); continue; }
+                if let Some(v) = tok.strip_prefix("sleep=") { let _ = v.parse::<usize>().map(|n| sleep_us = n); continue; }
+                if let Some(v) = tok.strip_prefix("empty=") { let _ = v.parse::<usize>().map(|n| empty = n); continue; }
+                if tok.eq_ignore_ascii_case("ctrl") { do_ctrl = true; continue; }
+                if tok.eq_ignore_ascii_case("verify") { do_verify = true; continue; }
+            }
+            crate::migrate::snp_poll_ex(system_table, cycles, sleep_us, do_ctrl, do_verify, empty);
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("migrate summary") {
+            crate::migrate::summary(system_table);
+            continue;
+        }
+        if cmd.starts_with("migrate session ") {
+            let rest = &cmd[16..].trim();
+            if rest.eq_ignore_ascii_case("start") { crate::migrate::session_start(system_table); let _ = system_table.stdout().write_str("migrate: session start\r\n"); continue; }
+            if rest.eq_ignore_ascii_case("elapsed") { crate::migrate::session_elapsed(system_table); continue; }
+            if rest.eq_ignore_ascii_case("bw") { crate::migrate::session_bw(system_table); continue; }
+            if rest.eq_ignore_ascii_case("bw_net") { crate::migrate::session_bw_net(system_table); continue; }
+            let _ = system_table.stdout().write_str("usage: migrate session [start|elapsed|bw|bw_net]\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate txlog") {
+            // migrate txlog [count=<n>]
+            let rest = cmd.strip_prefix("migrate txlog").unwrap_or("").trim();
+            let mut count: usize = 32;
+            for tok in rest.split_whitespace() { if let Some(v) = tok.strip_prefix("count=") { let _ = v.parse::<usize>().map(|n| count = n); } }
+            crate::migrate::txlog_dump(system_table, count);
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("migrate reset") {
+            crate::migrate::reset(system_table);
+            let _ = system_table.stdout().write_str("migrate: reset done\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate cfg ") {
+            let rest = &cmd[12..].trim();
+            if rest.eq_ignore_ascii_case("save") { crate::migrate::cfg_save(system_table); let _ = system_table.stdout().write_str("migrate: cfg saved\r\n"); continue; }
+            if rest.eq_ignore_ascii_case("load") { crate::migrate::cfg_load(system_table); let _ = system_table.stdout().write_str("migrate: cfg loaded\r\n"); continue; }
+            let _ = system_table.stdout().write_str("usage: migrate cfg [save|load]\r\n");
+            continue;
+        }
             let _ = stdout.write_str("  iommu: info | units | root <bus> | lsctx <bus> | dump <bus:dev.func> | plan | validate | verify | verify-map | xlate bdf=<seg:bus:dev.func> iova=<hex> | walk bdf=<seg:bus:dev.func> iova=<hex> | apply | apply-refresh | apply-safe | sync | invalidate | invalidate dom=<id> | invalidate bdf=<seg:bus:dev.func> | hard-invalidate | fsts | fclear | stats | summary | amdv enable|amdv disable\r\n");
             let _ = stdout.write_str("  dom: new | destroy <id> | purge <id> | seg:bus:dev.func assign <id> | seg:bus:dev.func unassign | list | map dom=<id> iova=<hex> pa=<hex> len=<hex> perm=[rwx] | unmap dom=<id> iova=<hex> len=<hex> | mappings | dump\r\n");
             continue;
@@ -547,6 +673,398 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             crate::obs::trace::dump(system_table);
             continue;
         }
+        if cmd.eq_ignore_ascii_case("migrate") {
+            crate::migrate::dump_stats(system_table);
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("migrate start") {
+            let vm = crate::hv::vm::Vm::create(system_table, crate::hv::vm::VmConfig { memory_bytes: 256 << 20, vcpu_count: 1 });
+            let _ = crate::hv::vm::register_vm(&vm);
+            if crate::migrate::start_tracking(system_table, &vm) {
+                let lang = crate::i18n::detect_lang(system_table);
+                let _ = system_table.stdout().write_str(crate::i18n::t(lang, crate::i18n::key::MIG_TRACK_START_OK));
+            } else {
+                let lang = crate::i18n::detect_lang(system_table);
+                let _ = system_table.stdout().write_str(crate::i18n::t(lang, crate::i18n::key::MIG_TRACK_START_FAIL));
+            }
+            continue;
+        }
+        if cmd.starts_with("migrate start id=") {
+            let rest = &cmd[17..].trim();
+            if let Ok(id) = rest.parse::<u64>() {
+                if crate::migrate::start_tracking_by_id(system_table, id) {
+                    let lang = crate::i18n::detect_lang(system_table);
+                    let _ = system_table.stdout().write_str(crate::i18n::t(lang, crate::i18n::key::MIG_TRACK_START_OK));
+                } else {
+                    let lang = crate::i18n::detect_lang(system_table);
+                    let _ = system_table.stdout().write_str(crate::i18n::t(lang, crate::i18n::key::MIG_TRACK_START_FAIL));
+                }
+                continue;
+            }
+            let _ = system_table.stdout().write_str("usage: migrate start id=<decimal>\r\n");
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("migrate plan") {
+            crate::migrate::plan_dirty_runs(system_table);
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("migrate export-dirty") {
+            let (_runs, _pages, bytes) = crate::migrate::export_dirty_runs(system_table, crate::migrate::ExportSink::Console);
+            let mut buf = [0u8; 64]; let mut i = 0;
+            for &b in b"migrate: export_bytes=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(bytes as u32, &mut buf[i..]);
+            buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+            let _ = system_table.stdout().write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+            continue;
+        }
+        if cmd.starts_with("migrate scan") {
+            let clear = cmd.trim_end().ends_with("clear");
+            let n = crate::migrate::scan_round(clear);
+            let stdout = system_table.stdout();
+            let mut buf = [0u8; 64]; let mut i = 0;
+            for &b in b"migrate: dirty_pages=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(n as u32, &mut buf[i..]);
+            buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+            let _ = stdout.write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+            continue;
+        }
+        if cmd.starts_with("migrate export ") {
+            // migrate export start=<hex> len=<hex> [sink=console|null]
+            let rest = &cmd[15..].trim();
+            let mut start: Option<u64> = None; let mut len: Option<u64> = None; let mut sink = crate::migrate::ExportSink::Console;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("start=") { start = u64::from_str_radix(v.trim_start_matches("0x"), 16).ok(); continue; }
+                if let Some(v) = tok.strip_prefix("len=") { len = u64::from_str_radix(v.trim_start_matches("0x"), 16).ok(); continue; }
+                if let Some(v) = tok.strip_prefix("sink=") {
+                    sink = if v.eq_ignore_ascii_case("null") { crate::migrate::ExportSink::Null }
+                    else if v.eq_ignore_ascii_case("buffer") { crate::migrate::ExportSink::Buffer }
+                    else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                    else { crate::migrate::ExportSink::Console };
+                    continue;
+                }
+            }
+            if let (Some(s), Some(l)) = (start, len) {
+                let bytes = crate::migrate::export_range(system_table, s, l, sink);
+                let stdout = system_table.stdout();
+                let mut buf = [0u8; 64]; let mut i = 0;
+                for &b in b"migrate: export_bytes=" { buf[i] = b; i += 1; }
+                i += crate::firmware::acpi::u32_to_dec(bytes as u32, &mut buf[i..]);
+                buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+                let _ = stdout.write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+                continue;
+            }
+            let stdout = system_table.stdout();
+            let _ = stdout.write_str("usage: migrate export start=<hex> len=<hex> [sink=console|null|buffer|snp]\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate precopy") {
+            // migrate precopy [rounds=<n>] [clear] [sink=console|null]
+            let rest = &cmd[15..].trim();
+            let mut rounds: u32 = 3; let mut clear = false; let mut sink = crate::migrate::get_default_sink();
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("rounds=") { if let Ok(n) = v.parse::<u32>() { rounds = n; } continue; }
+                if tok.eq_ignore_ascii_case("clear") { clear = true; continue; }
+                if let Some(v) = tok.strip_prefix("sink=") {
+                    sink = if v.eq_ignore_ascii_case("console") { crate::migrate::ExportSink::Console }
+                    else if v.eq_ignore_ascii_case("buffer") { crate::migrate::ExportSink::Buffer }
+                    else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                    else if v.eq_ignore_ascii_case("virtio") { crate::migrate::ExportSink::Virtio }
+                    else { crate::migrate::ExportSink::Null };
+                    continue;
+                }
+            }
+            let (done, pages, bytes) = crate::migrate::precopy(system_table, rounds, clear, sink);
+            let stdout = system_table.stdout();
+            let mut buf = [0u8; 96]; let mut i = 0;
+            for &b in b"migrate: precopy rounds=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(done as u32, &mut buf[i..]);
+            for &b in b" pages=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(pages as u32, &mut buf[i..]);
+            for &b in b" bytes=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(bytes as u32, &mut buf[i..]);
+            buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+            let _ = stdout.write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+            continue;
+        }
+        if cmd.starts_with("migrate precopy-throttle") {
+            // migrate precopy-throttle [rounds=<n>] [clear] [sink=console|null|buffer] rate=<kbps>
+            let rest = &cmd[24..].trim();
+            let mut rounds: u32 = 3; let mut clear = false; let mut sink = crate::migrate::get_default_sink(); let mut rate: u32 = 1024;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("rounds=") { if let Ok(n) = v.parse::<u32>() { rounds = n; } continue; }
+                if tok.eq_ignore_ascii_case("clear") { clear = true; continue; }
+                if let Some(v) = tok.strip_prefix("sink=") {
+                    sink = if v.eq_ignore_ascii_case("console") { crate::migrate::ExportSink::Console }
+                    else if v.eq_ignore_ascii_case("buffer") { crate::migrate::ExportSink::Buffer }
+                    else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                    else if v.eq_ignore_ascii_case("virtio") { crate::migrate::ExportSink::Virtio }
+                    else { crate::migrate::ExportSink::Null };
+                    continue;
+                }
+                if let Some(v) = tok.strip_prefix("rate=") { let _ = v.parse::<u32>().map(|n| rate = n); continue; }
+            }
+            let (done, pages, bytes) = crate::migrate::precopy_throttled(system_table, rounds, clear, sink, rate);
+            let stdout = system_table.stdout();
+            let mut buf = [0u8; 96]; let mut i = 0;
+            for &b in b"migrate: precopy rounds=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(done as u32, &mut buf[i..]);
+            for &b in b" pages=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(pages as u32, &mut buf[i..]);
+            for &b in b" bytes=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(bytes as u32, &mut buf[i..]);
+            buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+            let _ = stdout.write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("migrate stop") {
+            if crate::migrate::stop_tracking(system_table) {
+                let lang = crate::i18n::detect_lang(system_table);
+                let _ = system_table.stdout().write_str(crate::i18n::t(lang, crate::i18n::key::MIG_TRACK_STOP_OK));
+            } else {
+                let lang = crate::i18n::detect_lang(system_table);
+                let _ = system_table.stdout().write_str(crate::i18n::t(lang, crate::i18n::key::MIG_TRACK_STOP_FAIL));
+            }
+            continue;
+        }
+        if cmd.starts_with("migrate send-dirty") {
+            // migrate send-dirty [compress] [sink=console|null]
+            let rest = cmd.strip_prefix("migrate send-dirty").unwrap_or("").trim();
+            let mut compress = false; let mut sink = crate::migrate::get_default_sink();
+            for tok in rest.split_whitespace() {
+                if tok.eq_ignore_ascii_case("compress") { compress = true; continue; }
+                if let Some(v) = tok.strip_prefix("sink=") {
+                    sink = if v.eq_ignore_ascii_case("console") { crate::migrate::ExportSink::Console }
+                    else if v.eq_ignore_ascii_case("buffer") { crate::migrate::ExportSink::Buffer }
+                    else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                    else if v.eq_ignore_ascii_case("virtio") { crate::migrate::ExportSink::Virtio }
+                    else { crate::migrate::ExportSink::Null };
+                    continue;
+                }
+            }
+            let (frames, pages, bytes) = crate::migrate::send_dirty_pages(system_table, compress, sink);
+            let stdout = system_table.stdout();
+            let mut buf = [0u8; 96]; let mut i = 0;
+            for &b in b"migrate: sent frames=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(frames as u32, &mut buf[i..]);
+            for &b in b" pages=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(pages as u32, &mut buf[i..]);
+            for &b in b" bytes=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(bytes as u32, &mut buf[i..]);
+            buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+            let _ = stdout.write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+            continue;
+        }
+        if cmd.starts_with("migrate chan ") {
+            let rest = &cmd[13..].trim();
+            if rest.starts_with("new") {
+                let mut pages: usize = 64;
+                for tok in rest[3..].trim().split_whitespace() {
+                    if let Some(v) = tok.strip_prefix("pages=") { if let Ok(n) = v.parse::<usize>() { pages = n; } }
+                }
+                let ok = crate::migrate::chan_new(system_table, pages);
+                let lang2 = crate::i18n::detect_lang(system_table);
+                let _ = system_table.stdout().write_str(if ok { crate::i18n::t(lang2, crate::i18n::key::MIG_CHAN_NEW_OK) } else { crate::i18n::t(lang2, crate::i18n::key::MIG_CHAN_NEW_FAIL) });
+                continue;
+            }
+            if rest.eq_ignore_ascii_case("clear") { crate::migrate::chan_clear(); let lang3 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang3, crate::i18n::key::MIG_CHAN_CLEARED)); continue; }
+            if rest.starts_with("dump") {
+                let mut len: usize = 0; let mut hex = false;
+                for tok in rest[4..].trim().split_whitespace() {
+                    if let Some(v) = tok.strip_prefix("len=") { let _ = v.parse::<usize>().map(|n| len = n); continue; }
+                    if tok.eq_ignore_ascii_case("hex") { hex = true; continue; }
+                }
+                crate::migrate::chan_dump(system_table, len, hex);
+                continue;
+            }
+            if rest.starts_with("consume ") {
+                let rest2 = &rest[8..].trim();
+                if let Ok(n) = rest2.parse::<usize>() { crate::migrate::chan_consume(n); let _ = system_table.stdout().write_str("migrate: chan consumed\r\n"); continue; }
+                let _ = system_table.stdout().write_str("usage: migrate chan consume <bytes>\r\n");
+                continue;
+            }
+            if rest.starts_with("chunk ") {
+                let rest2 = &rest[6..].trim();
+                if rest2.eq_ignore_ascii_case("get") {
+                    let sz = crate::migrate::get_chunk_size();
+                    let mut buf = [0u8; 48]; let mut i = 0;
+                    for &b in b"migrate: chunk=" { buf[i] = b; i += 1; }
+                    i += crate::firmware::acpi::u32_to_dec(sz as u32, &mut buf[i..]);
+                    buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+                    let _ = system_table.stdout().write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+                    continue;
+                }
+                if let Some(v) = rest2.strip_prefix("set ") {
+                    if let Ok(n) = v.trim().parse::<usize>() { crate::migrate::set_chunk_size(n); }
+                    let _ = system_table.stdout().write_str("migrate: chunk updated\r\n");
+                    continue;
+                }
+                let _ = system_table.stdout().write_str("usage: migrate chan chunk [get|set <bytes>]\r\n");
+                continue;
+            }
+            let (len, cap) = crate::migrate::chan_stats();
+            let mut buf = [0u8; 64]; let mut i = 0;
+            for &b in b"migrate: chan len=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(len as u32, &mut buf[i..]);
+            for &b in b" cap=" { buf[i] = b; i += 1; }
+            i += crate::firmware::acpi::u32_to_dec(cap as u32, &mut buf[i..]);
+            buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+            let _ = system_table.stdout().write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+            continue;
+        }
+        if cmd.starts_with("migrate verify") {
+            // migrate verify [limit=<n>] [quiet]
+            let rest = cmd.strip_prefix("migrate verify").unwrap_or("").trim();
+            let mut limit: usize = 0; let mut quiet = false;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("limit=") { let _ = v.parse::<usize>().map(|n| limit = n); continue; }
+                if tok.eq_ignore_ascii_case("quiet") { quiet = true; continue; }
+            }
+            crate::migrate::chan_verify(system_table, limit, quiet);
+            continue;
+        }
+        if cmd.starts_with("migrate replay") {
+            // migrate replay [pages=<n>]
+            let rest = cmd.strip_prefix("migrate replay").unwrap_or("").trim();
+            let mut pages: usize = 0;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("pages=") { let _ = v.parse::<usize>().map(|n| pages = n); continue; }
+            }
+            crate::migrate::replay_to_buffer(system_table, pages);
+            continue;
+        }
+        if cmd.starts_with("migrate resend ") {
+            // migrate resend from=<seq> [count=<n>] [compress] [sink=console|null|buffer]
+            let rest = &cmd[15..].trim();
+            let mut from: Option<u32> = None; let mut count: usize = 0; let mut compress = false; let mut sink = crate::migrate::ExportSink::Null;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("from=") { from = v.parse::<u32>().ok(); continue; }
+                if let Some(v) = tok.strip_prefix("count=") { let _ = v.parse::<usize>().map(|n| count = n); continue; }
+                if tok.eq_ignore_ascii_case("compress") { compress = true; continue; }
+                if let Some(v) = tok.strip_prefix("sink=") {
+                    sink = if v.eq_ignore_ascii_case("console") { crate::migrate::ExportSink::Console }
+                    else if v.eq_ignore_ascii_case("buffer") { crate::migrate::ExportSink::Buffer }
+                    else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                    else { crate::migrate::ExportSink::Null };
+                    continue;
+                }
+            }
+            if let Some(f) = from {
+                let (frames, bytes) = crate::migrate::resend_from(system_table, f, count, compress, sink);
+                let stdout = system_table.stdout();
+                let mut buf = [0u8; 96]; let mut i = 0;
+                for &b in b"migrate: resent frames=" { buf[i] = b; i += 1; }
+                i += crate::firmware::acpi::u32_to_dec(frames as u32, &mut buf[i..]);
+                for &b in b" bytes=" { buf[i] = b; i += 1; }
+                i += crate::firmware::acpi::u32_to_dec(bytes as u32, &mut buf[i..]);
+                buf[i] = b'\r'; i += 1; buf[i] = b'\n'; i += 1;
+                let _ = stdout.write_str(core::str::from_utf8(&buf[..i]).unwrap_or("\r\n"));
+                continue;
+            }
+            let _ = system_table.stdout().write_str("usage: migrate resend from=<seq> [count=<n>] [compress] [sink=console|null|buffer]\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate ctrl ") {
+            // migrate ctrl ack <seq> [sink=...] | migrate ctrl nak <seq> [sink=...]
+            let rest = &cmd[13..].trim();
+            let mut parts = rest.split_whitespace();
+            if let (Some(kind), Some(seq_s)) = (parts.next(), parts.next()) {
+                if let Ok(seq) = seq_s.parse::<u32>() {
+                    let mut sink = crate::migrate::ExportSink::Buffer;
+                    for tok in parts {
+                        if let Some(v) = tok.strip_prefix("sink=") {
+                            sink = if v.eq_ignore_ascii_case("console") { crate::migrate::ExportSink::Console }
+                                   else if v.eq_ignore_ascii_case("null") { crate::migrate::ExportSink::Null }
+                                   else if v.eq_ignore_ascii_case("snp") { crate::migrate::ExportSink::Snp }
+                                   else { crate::migrate::ExportSink::Buffer };
+                        }
+                    }
+                    crate::migrate::send_ctrl(system_table, kind.eq_ignore_ascii_case("ack"), seq, sink);
+                    continue;
+                }
+            }
+            let _ = system_table.stdout().write_str("usage: migrate ctrl [ack|nak] <seq> [sink=console|null|buffer]\r\n");
+            continue;
+        }
+        if cmd.starts_with("migrate net ") {
+            // migrate net mac [get|set xx:xx:xx:xx:xx:xx]
+            // migrate net mtu [get|set <n>]
+            // migrate net ether [get|set <hex>]
+            let rest = &cmd[12..].trim();
+            if rest.starts_with("mac ") {
+                let sub = &rest[4..].trim();
+                if sub.eq_ignore_ascii_case("get") {
+                    let mac = crate::migrate::net_get_dest_mac();
+                    let mut out = [0u8; 64]; let mut n = 0;
+                    let lang2 = crate::i18n::detect_lang(system_table);
+                    for &b in crate::i18n::t(lang2, crate::i18n::key::MIG_NET_MAC_PREFIX).as_bytes() { out[n] = b; n += 1; }
+                    for i in 0..6 {
+                        n += crate::util::format::u64_hex(mac[i] as u64, &mut out[n..]);
+                        if i != 5 { out[n] = b':'; n += 1; }
+                    }
+                    out[n] = b'\r'; n += 1; out[n] = b'\n'; n += 1;
+                    let _ = system_table.stdout().write_str(core::str::from_utf8(&out[..n]).unwrap_or("\r\n"));
+                    continue;
+                }
+                if let Some(v) = sub.strip_prefix("set ") {
+                    let mut mac = [0u8;6];
+                    let mut ok = true; let mut idx = 0;
+                    for part in v.split(':') {
+                        if idx >= 6 { ok = false; break; }
+                        if let Ok(byte) = u8::from_str_radix(part.trim_start_matches("0x"), 16) { mac[idx] = byte; idx += 1; } else { ok = false; break; }
+                    }
+                    if ok && idx == 6 { crate::migrate::net_set_dest_mac(mac); crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_CFG_SET).inc(); let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_MAC_UPDATED)); }
+                    else { let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_MAC_USAGE)); }
+                    continue;
+                }
+                { let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_MAC_USAGE)); }
+                continue;
+            }
+            if rest.starts_with("mtu ") {
+                let sub = &rest[4..].trim();
+                if sub.eq_ignore_ascii_case("get") {
+                    let mtu = crate::migrate::net_get_mtu();
+                    let mut out = [0u8; 48]; let mut n = 0;
+                    let lang2 = crate::i18n::detect_lang(system_table);
+                    for &b in crate::i18n::t(lang2, crate::i18n::key::MIG_NET_MTU_PREFIX).as_bytes() { out[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(mtu as u32, &mut out[n..]);
+                    out[n] = b'\r'; n += 1; out[n] = b'\n'; n += 1;
+                    let _ = system_table.stdout().write_str(core::str::from_utf8(&out[..n]).unwrap_or("\r\n"));
+                    continue;
+                }
+                if let Some(v) = sub.strip_prefix("set ") {
+                    if let Ok(n) = v.trim().parse::<usize>() { crate::migrate::net_set_mtu(n); crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_CFG_SET).inc(); let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_MTU_UPDATED)); continue; }
+                }
+                { let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_MTU_USAGE)); }
+                continue;
+            }
+            if rest.starts_with("ether ") {
+                let sub = &rest[6..].trim();
+                if sub.eq_ignore_ascii_case("get") {
+                    let et = crate::migrate::net_get_ethertype();
+                    let mut out = [0u8; 48]; let mut n = 0; let lang2 = crate::i18n::detect_lang(system_table);
+                    for &b in crate::i18n::t(lang2, crate::i18n::key::MIG_NET_ETHER_PREFIX).as_bytes() { out[n] = b; n += 1; }
+                    n += crate::util::format::u64_hex(et as u64, &mut out[n..]);
+                    out[n] = b'\r'; n += 1; out[n] = b'\n'; n += 1;
+                    let _ = system_table.stdout().write_str(core::str::from_utf8(&out[..n]).unwrap_or("\r\n"));
+                    continue;
+                }
+                if let Some(v) = sub.strip_prefix("set ") {
+                    if let Ok(n) = u16::from_str_radix(v.trim_start_matches("0x"), 16) { crate::migrate::net_set_ethertype(n); crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_CFG_SET).inc(); let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_ETHER_UPDATED)); continue; }
+                }
+                { let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_ETHER_USAGE)); }
+                continue;
+            }
+            { let lang2 = crate::i18n::detect_lang(system_table); let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::MIG_NET_USAGE)); }
+            continue;
+        }
+        if cmd.starts_with("migrate handle-ctrl") {
+            // migrate handle-ctrl [limit=<n>]
+            let rest = cmd.strip_prefix("migrate handle-ctrl").unwrap_or("").trim();
+            let mut limit: usize = 0;
+            for tok in rest.split_whitespace() { if let Some(v) = tok.strip_prefix("limit=") { let _ = v.parse::<usize>().map(|n| limit = n); } }
+            crate::migrate::chan_handle_ctrl(system_table, limit);
+            continue;
+        }
         if cmd.eq_ignore_ascii_case("trace clear") {
             crate::obs::trace::clear();
             let stdout = system_table.stdout();
@@ -751,6 +1269,7 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
         if cmd.eq_ignore_ascii_case("vm") {
             // Create a tiny VM object and print its id, try start (VMX smoke paths)
             let vm = crate::hv::vm::Vm::create(system_table, crate::hv::vm::VmConfig { memory_bytes: 64 << 20, vcpu_count: 1 });
+            let _ = crate::hv::vm::register_vm(&vm);
             let mut vcpu = crate::hv::vcpu::Vcpu::new(0);
             vcpu.start();
             vm.start(system_table);
@@ -765,6 +1284,24 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             let _ = stdout.write_str(core::str::from_utf8(&out[..n]).unwrap_or("\r\n"));
             vm.stop();
             vm.destroy();
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("vm list") {
+            let stdout = system_table.stdout();
+            crate::hv::vm::list_vms(|info| {
+                let mut out = [0u8; 128]; let mut n = 0;
+                for &b in b"vm: id=" { out[n] = b; n += 1; }
+                n += crate::firmware::acpi::u32_to_dec(info.id as u32, &mut out[n..]);
+                for &b in b" vendor=" { out[n] = b; n += 1; }
+                let v = match info.vendor { crate::hv::vm::HvVendor::Intel => b"intel", crate::hv::vm::HvVendor::Amd => b"amd", crate::hv::vm::HvVendor::Unknown => b"unknown" };
+                for &b in v { out[n] = b; n += 1; }
+                for &b in b" pml4=0x" { out[n] = b; n += 1; }
+                n += crate::util::format::u64_hex(info.pml4_phys, &mut out[n..]);
+                for &b in b" mem=0x" { out[n] = b; n += 1; }
+                n += crate::util::format::u64_hex(info.memory_bytes, &mut out[n..]);
+                out[n] = b'\r'; n += 1; out[n] = b'\n'; n += 1;
+                let _ = stdout.write_str(core::str::from_utf8(&out[..n]).unwrap_or("\r\n"));
+            });
             continue;
         }
         if cmd.eq_ignore_ascii_case("vm pause") {
@@ -783,6 +1320,7 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             let rest = &cmd[3..];
             if rest.eq_ignore_ascii_case("new") {
                 let vm = crate::hv::vm::Vm::create(system_table, crate::hv::vm::VmConfig { memory_bytes: 256 << 20, vcpu_count: 1 });
+            let _ = crate::hv::vm::register_vm(&vm);
                 let stdout = system_table.stdout();
                 let mut out = [0u8; 64]; let mut n = 0;
                 for &b in b"vm id=" { out[n] = b; n += 1; }
@@ -793,6 +1331,7 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             }
             if rest.eq_ignore_ascii_case("start") {
                 let vm = crate::hv::vm::Vm::create(system_table, crate::hv::vm::VmConfig { memory_bytes: 256 << 20, vcpu_count: 1 });
+            let _ = crate::hv::vm::register_vm(&vm);
                 let mut vcpu = crate::hv::vcpu::Vcpu::new(0);
                 vcpu.start();
                 vm.start(system_table);
