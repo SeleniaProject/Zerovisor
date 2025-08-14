@@ -3,6 +3,7 @@
 //! Minimal Intel VMX capability checks and VMXON preparation stubs.
 
 use crate::arch::x86::cpuid;
+use crate::obs::metrics;
 use core::fmt::Write as _;
 use crate::util::format;
 
@@ -150,8 +151,10 @@ pub fn vmx_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude::Boo
     // Execute VMXON and capture flags
     let phys = mem as u64; // identity mapping assumption
     let _before = read_rflags();
+    let t0 = crate::time::rdtsc();
     unsafe { core::arch::asm!("vmxon [{}]", in(reg) &phys); }
     let after = read_rflags();
+    let t1 = crate::time::rdtsc();
     let cf = (after & 0x1) != 0;
     let zf = (after & 0x40) != 0;
     if cf || zf {
@@ -171,6 +174,13 @@ pub fn vmx_smoke_test(system_table: &uefi::table::SystemTable<uefi::prelude::Boo
 
     // Free memory
     crate::mm::uefi::free_pages(system_table, mem, 1);
+    // Observe duration in microseconds using approximate TSC Hz
+    let hz = crate::time::tsc_hz();
+    if hz != 0 {
+        let dt = t1.wrapping_sub(t0);
+        let us = (dt as u128) * 1_000_000u128 / (hz as u128);
+        metrics::observe_vmx_smoke_us(us as u64);
+    }
     Ok(())
 }
 
