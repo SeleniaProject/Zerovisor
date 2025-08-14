@@ -113,8 +113,10 @@ pub fn vmx_report_ept_vpid_cap(system_table: &mut uefi::table::SystemTable<uefi:
     // Minimal decode: large page support flags commonly used (bit positions from SDM)
     let ept_2m = (cap & (1 << 16)) != 0;
     let ept_1g = (cap & (1 << 17)) != 0;
+    let ept_ad = (cap & (1 << 21)) != 0; // Accessed/Dirty bits for EPT
     if ept_2m { let _ = stdout.write_str("EPT: 2MiB pages supported\r\n"); }
     if ept_1g { let _ = stdout.write_str("EPT: 1GiB pages supported\r\n"); }
+    if ept_ad { let _ = stdout.write_str("EPT: Accessed/Dirty bits supported\r\n"); }
 }
 
 /// Attempt VMXON then VMXOFF for a smoke test using UEFI page allocation.
@@ -288,8 +290,13 @@ pub fn vmx_ept_smoke_test(system_table: &mut uefi::table::SystemTable<uefi::prel
         large_page_2m: (ept_caps & (1 << 16)) != 0,
         large_page_1g: (ept_caps & (1 << 17)) != 0,
     };
+    let ept_ad = (ept_caps & (1 << 21)) != 0;
     if let Some(pml4) = crate::mm::ept::build_identity_best(system_table, 1u64 << 30, caps) {
-        let eptp = crate::mm::ept::eptp_from_pml4(pml4 as u64);
+        let eptp = if ept_ad {
+            crate::mm::ept::eptp_from_pml4_with_opts(pml4 as u64, crate::mm::ept::EptOptions { allow_execute: true, enable_ad: true })
+        } else {
+            crate::mm::ept::eptp_from_pml4(pml4 as u64)
+        };
         crate::arch::x86::vm::vmcs::vmwrite(crate::arch::x86::vm::vmcs::VMCS_EPT_POINTER, eptp)?;
         let stdout = system_table.stdout();
         let _ = stdout.write_str("VMX: EPTP set (identity mapping)\r\n");
