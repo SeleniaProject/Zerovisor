@@ -88,6 +88,16 @@ Zerovisor — 世界最高性能・最高信頼のType‑1（ベアメタル）�
 - UEFI SNP と VirtIO-net(1.0+) は feature で選択し、無効化時でも Console/Null/Buffer sink で評価可能であること。
 - 監査/メトリクス/トレースで、開始/停止、走査ラウンド、送受信、再送、帯域の可視化が可能であること。
 
+### IOMMU（VT-d/AMD‑VI）初期要件と自己検証
+- DMAR/IVRS からのユニット検出と最小初期化（RTADDR設定とSRTP確認、TEは明示的に切替）。
+- コンテキスト（Root/Context）適用はドメイン/割当情報から決定し、二段ページングのSLPTPTRを正しく配線すること。
+- `iommu selftest` により、plan/apply/verify/invalidate/translate/walk が一連で実行できること（低侵襲、短時間）。
+
+### 運用要件（IOMMUクイック操作と設定永続化）
+- `iommu quick` により、plan→apply‑safe→verify→verify‑map→invalidate が単一コマンドで実行できること。
+- IOMMUの割当状態はUEFI変数に保存/復元できること（`iommu cfg save|load`）。
+- 保存形式は固定長エントリ（seg/bus/dev.func/dom）で容量上限を設け、読込時の整合性チェックを行うこと。
+
 ### 観測性と運用（Observability & Operations）
 - ログ: 構造化ログ（JSONライン等）、重大度/カテゴリ/言語タグ。ローテーションと堅牢な永続化。
 - メトリクス: vCPUスケジュール時間、VM‑Entry/Exit回数、EPT/NPTインバリデーション、I/Oキュー深さ。

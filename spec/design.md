@@ -167,3 +167,24 @@ stateDiagram-v2
 - TX(1)/RX(0)の各キューをUEFIページで確保、notify経路確立。
 - RXポンプがMIGフレームを取り込み、CRC検証後にチャネルへ書き込み。
 - 省略: 割込み/MSI、複数キュー、オフロード。初期段階ではポーリングで確認。
+
+### IOMMU VT-d 自己検証（Self-test）
+
+- 目的: 早期ブート段階での文脈（Root/Context）適用・二段ページング整合・無効化（SRTP/TE切替）パスの健全性を素早く確認。
+- コマンド: `iommu selftest [quick] [no-apply] [no-inv] [dom=<id>] [walk=<n>] [xlate=<n>]`
+- 手順: plan → apply（safe/refresh）→ verify（state/map）→ invalidate（任意）→ walk/xlate のサンプリング → summary/stats。
+- 範囲: 低侵襲（TEが有効な場合は必要最小限の再適用）。マッピング検証は端点（先頭/末尾）に限定して高速化。
+
+### IOMMU 設定永続化（UEFI変数）
+
+- 目的: 早期ブート環境でのドメイン/割当状態をシンプルに保存・復元し、再起動後の再適用を容易にする。
+- 格納先: UEFI Runtime Services 変数（VendorGUID=EFI_GLOBAL）
+  - `ZerovisorIommuAssign`: バイナリ（LE）
+    - 先頭2B: エントリ個数（u16）
+    - 続くN×8B: [seg(2B), bus(1B), dev(1B), func(1B), pad(1B=0), dom(2B)]
+- 復元時:
+  - 読み出し→古いdom idを新規domにマップ（連番付与）→`assign_device()` を順次適用。
+  - `apply_and_refresh()` を実行し、RTADDR再サンプルとキャッシュ更新を保証。
+- CLI:
+  - `iommu cfg save` / `iommu cfg load`
+  - `iommu quick`（plan→apply-safe→verify→verify-map→invalidate の一括実行）
