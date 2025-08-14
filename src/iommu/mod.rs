@@ -213,8 +213,10 @@ pub fn cfg_load(system_table: &mut SystemTable<Boot>) {
             }
             if let Some(new_dom) = ndom { let _ = crate::iommu::state::assign_device(seg, bus, dev, func, new_dom); }
         }
-        // Apply contexts and refresh caches for safety
+        // Apply contexts and refresh caches for safety (both vendors conservatively)
         crate::iommu::vtd::apply_and_refresh(system_table);
+        crate::iommu::amdv::minimal_init(system_table);
+        crate::iommu::amdv::enable_translation_all(system_table);
     }
 }
 
