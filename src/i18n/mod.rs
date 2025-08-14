@@ -187,6 +187,8 @@ pub mod key {
     pub const MIG_NET_ETHER_PREFIX: &str = "migrate_net_ether_prefix";
     pub const MIG_NET_ETHER_UPDATED: &str = "migrate_net_ether_updated";
     pub const MIG_NET_ETHER_USAGE: &str = "migrate_net_ether_usage";
+    pub const IOMMU_CFG_SAVED: &str = "iommu_cfg_saved";
+    pub const IOMMU_CFG_LOADED: &str = "iommu_cfg_loaded";
 }
 
 /// Resolve a message key for a given language.
@@ -251,6 +253,8 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::MIG_NET_ETHER_PREFIX => "net: ether=0x",
             key::MIG_NET_ETHER_UPDATED => "net: ether updated\r\n",
             key::MIG_NET_ETHER_USAGE => "usage: migrate net ether [get|set <hex>]\r\n",
+            key::IOMMU_CFG_SAVED => "iommu: cfg saved\r\n",
+            key::IOMMU_CFG_LOADED => "iommu: cfg loaded\r\n",
             _ => "\r\n",
         },
         Lang::Ja => match key {
@@ -311,6 +315,8 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::MIG_NET_ETHER_PREFIX => "net: EtherType=0x",
             key::MIG_NET_ETHER_UPDATED => "net: EtherTypeを更新しました\r\n",
             key::MIG_NET_ETHER_USAGE => "usage: migrate net ether [get|set <hex>]\r\n",
+            key::IOMMU_CFG_SAVED => "iommu: 設定を保存しました\r\n",
+            key::IOMMU_CFG_LOADED => "iommu: 設定を読み込みました\r\n",
             _ => "\r\n",
         },
         Lang::Zh => match key {
@@ -371,6 +377,8 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::MIG_NET_ETHER_PREFIX => "net: EtherType=0x",
             key::MIG_NET_ETHER_UPDATED => "net: 已更新EtherType\r\n",
             key::MIG_NET_ETHER_USAGE => "usage: migrate net ether [get|set <hex>]\r\n",
+            key::IOMMU_CFG_SAVED => "iommu: 已保存配置\r\n",
+            key::IOMMU_CFG_LOADED => "iommu: 已加载配置\r\n",
             _ => "\r\n",
         },
     }

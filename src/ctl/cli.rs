@@ -551,12 +551,14 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
         }
         if cmd.eq_ignore_ascii_case("iommu cfg save") {
             crate::iommu::cfg_save(system_table);
-            let _ = system_table.stdout().write_str("iommu: cfg saved\r\n");
+            let lang2 = crate::i18n::detect_lang(system_table);
+            let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::IOMMU_CFG_SAVED));
             continue;
         }
         if cmd.eq_ignore_ascii_case("iommu cfg load") {
             crate::iommu::cfg_load(system_table);
-            let _ = system_table.stdout().write_str("iommu: cfg loaded\r\n");
+            let lang2 = crate::i18n::detect_lang(system_table);
+            let _ = system_table.stdout().write_str(crate::i18n::t(lang2, crate::i18n::key::IOMMU_CFG_LOADED));
             continue;
         }
         if cmd.eq_ignore_ascii_case("iommu verify") {
