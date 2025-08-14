@@ -119,6 +119,16 @@ iommu cfg save       # save current seg:bus:dev.func -> domain assignments
 iommu cfg load       # restore and re-apply, then refresh VT-d caches
 ```
 
+## VirtIO quick ops
+
+On the UEFI console, you can quickly initialize virtio-net and transmit bytes:
+
+```text
+virtio net init            # initialize TX/RX queues
+virtio net tx <hex>        # send raw bytes, e.g. "DE AD BE EF"
+virtio net tx-eth <hex>    # wrap payload into Ethernet frame using migrate MAC/EtherType
+```
+
 ## Notes
 
 - The bootstrap prints a short banner to the UEFI text console. If you do not see any output, verify that your firmware console is enabled and that the file was placed under the standard removable media path (`EFI/BOOT/BOOTX64.EFI`).

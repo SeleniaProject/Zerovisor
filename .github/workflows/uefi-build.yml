@@ -23,6 +23,12 @@ jobs:
       - name: Add UEFI target
         run: rustup target add x86_64-unknown-uefi
 
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: Build (default)
         run: cargo build --release --target x86_64-unknown-uefi
 
