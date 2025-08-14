@@ -216,7 +216,7 @@ fn find_first_virtio_net(system_table: &mut SystemTable<Boot>) -> Option<(usize,
 pub fn init_tx(system_table: &mut SystemTable<Boot>) -> bool {
     unsafe {
         if TX.inited { return true; }
-        if let Some((common_base, notify_mul_u8, notify_base, cfg)) = find_first_virtio_net(system_table) {
+        if let Some((common_base, notify_mul_u8, notify_base, _cfg)) = find_first_virtio_net(system_table) {
             TX.cfg_base = common_base; TX.notify_base = notify_base; TX.notify_off_mul = notify_mul_u8 as u32; TX.queue_index = 1; // virtio-net: queue 1 is TX
             // device_status at 0x14
             let device_status = TX.cfg_base + 0x14;
@@ -236,11 +236,11 @@ pub fn init_tx(system_table: &mut SystemTable<Boot>) -> bool {
             // select queue 0 and read size
             mmio_write16(TX.cfg_base + 0x16, TX.queue_index);
             let qsz = mmio_read16(TX.cfg_base + 0x18);
-            if qsz == 0 { return false; }
+            if qsz == 0 { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_INIT_FAIL).inc(); return false; }
             TX.queue_size = qsz;
             // allocate tables
             let desc_bytes = (core::mem::size_of::<VirtqDesc>() as usize).saturating_mul(qsz as usize);
-            let avail_bytes = (core::mem::size_of::<u16>() * (3 + qsz as usize));
+            let avail_bytes = core::mem::size_of::<u16>() * (3 + qsz as usize);
             let used_bytes = (core::mem::size_of::<u16>() * 3) + (core::mem::size_of::<VirtqUsedElem>() * qsz as usize);
             let total = desc_bytes + avail_bytes + used_bytes + 4096; // padding
             let pages = (total + 4095) / 4096;
@@ -267,16 +267,19 @@ pub fn init_tx(system_table: &mut SystemTable<Boot>) -> bool {
                     core::ptr::write_bytes(dp, 0, dpages * 4096);
                     TX.desc_data = dp;
                 }
-                if TX.desc_data.is_null() { return false; }
+                if TX.desc_data.is_null() { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_INIT_FAIL).inc(); return false; }
                 // DRIVER_OK
                 let st4 = mmio_read8(device_status);
                 mmio_write8(device_status, st4 | VIRTIO_STATUS_DRIVER_OK);
                 // Initialize last used index
                 TX.used_last = core::ptr::read_volatile((TX.q_used as usize + 2) as *const u16);
                 TX.inited = true;
+                crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_INIT_OK).inc();
+                crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_START_OK).inc();
                 return TX.inited;
             }
         }
+        crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_START_FAIL).inc();
         false
     }
 }
@@ -294,7 +297,7 @@ pub fn init_rx(system_table: &mut SystemTable<Boot>) -> bool {
         RX.queue_size = qsz;
         // allocate rings and a slab for RX buffers (per-desc 2048 + 10 header margin)
         let desc_bytes = (core::mem::size_of::<VirtqDesc>() as usize).saturating_mul(qsz as usize);
-        let avail_bytes = (core::mem::size_of::<u16>() * (3 + qsz as usize));
+        let avail_bytes = core::mem::size_of::<u16>() * (3 + qsz as usize);
         let used_bytes = (core::mem::size_of::<u16>() * 3) + (core::mem::size_of::<VirtqUsedElem>() * qsz as usize);
         let ring_total = desc_bytes + avail_bytes + used_bytes + 4096;
         let slab_per = 2048 + 64; // allow some headroom
@@ -454,6 +457,8 @@ pub fn tx_send(system_table: &mut SystemTable<Boot>, data: &[u8]) -> usize {
         fence();
         // Notify
         mmio_write16(TX.queue_notify_addr, TX.queue_index);
+        crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_TX_FRAMES).inc();
+        crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NET_TX_BYTES).add(total as u64);
         total
     }
 }
