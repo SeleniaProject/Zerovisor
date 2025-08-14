@@ -9,6 +9,7 @@ pub enum Event {
     VmStart(u64),
     VmStop(u64),
     VmDestroy(u64),
+        MigrateScanRound(u64, u64),
     IommuInvalidateAll(u16),
     IommuInvalidateDomain(u16),
     IommuInvalidateBdf(u16, u8, u8, u8),
@@ -50,6 +51,12 @@ pub fn dump(system_table: &mut uefi::table::SystemTable<uefi::prelude::Boot>) {
             Event::VmDestroy(id) => {
                 for &b in b"trace: vm_destroy id=" { buf[n] = b; n += 1; }
                 n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]);
+                }
+                Event::MigrateScanRound(id, pages) => {
+                    for &b in b"trace: migrate_scan id=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]);
+                    for &b in b" pages=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(pages as u32, &mut buf[n..]);
             }
             Event::IommuInvalidateAll(seg) => {
                 for &b in b"trace: vtd_inval_all seg=" { buf[n] = b; n += 1; }
@@ -95,6 +102,12 @@ pub fn dump_with_writer(mut write_bytes: impl FnMut(&[u8])) {
             Event::VmStart(id) => { for &b in b"trace: vm_start id=" { buf[n] = b; n += 1; } n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]); }
             Event::VmStop(id) => { for &b in b"trace: vm_stop id=" { buf[n] = b; n += 1; } n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]); }
             Event::VmDestroy(id) => { for &b in b"trace: vm_destroy id=" { buf[n] = b; n += 1; } n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]); }
+                Event::MigrateScanRound(id, pages) => {
+                    for &b in b"trace: migrate_scan id=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]);
+                    for &b in b" pages=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(pages as u32, &mut buf[n..]);
+                }
             Event::IommuInvalidateAll(seg) => { for &b in b"trace: vtd_inval_all seg=" { buf[n] = b; n += 1; } n += crate::firmware::acpi::u32_to_dec(seg as u32, &mut buf[n..]); }
             Event::IommuInvalidateDomain(dom) => { for &b in b"trace: vtd_inval_dom id=" { buf[n] = b; n += 1; } n += crate::firmware::acpi::u32_to_dec(dom as u32, &mut buf[n..]); }
             Event::IommuInvalidateBdf(seg, bus, dev, func) => {
