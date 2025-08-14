@@ -37,6 +37,24 @@
   , "sec_nxe_on": "Security: EFER.NXE=ON\r\n"
   , "sec_nxe_off": "Security: EFER.NXE=OFF\r\n"
   , "sec_summary_ok": "Security: protections OK (WP/SMEP/SMAP/NXE)\r\n"
-  , "sec_summary_ng": "Security: protections NOT fully enabled\r\n"
+  , "sec_summary_ng": "Security: protections NOT fully enabled\r\n",
+  "migrate_track_start_ok": "migrate: tracking started\r\n",
+  "migrate_track_start_fail": "migrate: start failed\r\n",
+  "migrate_track_stop_ok": "migrate: tracking stopped\r\n",
+  "migrate_track_stop_fail": "migrate: stop failed\r\n",
+  "migrate_chan_new_ok": "migrate: chan new ok\r\n",
+  "migrate_chan_new_fail": "migrate: chan new failed\r\n",
+  "migrate_chan_cleared": "migrate: chan cleared\r\n",
+  "migrate_no_buffer": "migrate: no buffer\r\n",
+  "migrate_net_mac_prefix": "net: mac=",
+  "migrate_net_mtu_prefix": "net: mtu=",
+  "migrate_net_mac_updated": "net: mac updated\r\n",
+  "migrate_net_mtu_updated": "net: mtu updated\r\n",
+  "migrate_net_usage": "usage: migrate net [mac|mtu] ...\r\n",
+  "migrate_net_mac_usage": "usage: migrate net mac [get|set xx:xx:xx:xx:xx:xx]\r\n",
+  "migrate_net_mtu_usage": "usage: migrate net mtu [get|set <n>]\r\n",
+  "migrate_net_ether_prefix": "net: ether=0x",
+  "migrate_net_ether_updated": "net: ether updated\r\n",
+  "migrate_net_ether_usage": "usage: migrate net ether [get|set <hex>]\r\n"
 }
 

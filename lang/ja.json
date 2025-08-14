@@ -37,6 +37,24 @@
   , "sec_nxe_on": "セキュリティ: EFER.NXE=有効\r\n"
   , "sec_nxe_off": "セキュリティ: EFER.NXE=無効\r\n"
   , "sec_summary_ok": "セキュリティ: 保護は有効（WP/SMEP/SMAP/NXE）\r\n"
-  , "sec_summary_ng": "セキュリティ: 保護が十分ではありません\r\n"
+  , "sec_summary_ng": "セキュリティ: 保護が十分ではありません\r\n",
+  "migrate_track_start_ok": "migrate: 追跡を開始しました\r\n",
+  "migrate_track_start_fail": "migrate: 開始に失敗しました\r\n",
+  "migrate_track_stop_ok": "migrate: 追跡を停止しました\r\n",
+  "migrate_track_stop_fail": "migrate: 停止に失敗しました\r\n",
+  "migrate_chan_new_ok": "migrate: チャネル作成に成功\r\n",
+  "migrate_chan_new_fail": "migrate: チャネル作成に失敗\r\n",
+  "migrate_chan_cleared": "migrate: チャネルをクリアしました\r\n",
+  "migrate_no_buffer": "migrate: バッファがありません\r\n",
+  "migrate_net_mac_prefix": "net: MAC=",
+  "migrate_net_mtu_prefix": "net: MTU=",
+  "migrate_net_mac_updated": "net: MACを更新しました\r\n",
+  "migrate_net_mtu_updated": "net: MTUを更新しました\r\n",
+  "migrate_net_usage": "usage: migrate net [mac|mtu] ...\r\n",
+  "migrate_net_mac_usage": "usage: migrate net mac [get|set xx:xx:xx:xx:xx:xx]\r\n",
+  "migrate_net_mtu_usage": "usage: migrate net mtu [get|set <n>]\r\n",
+  "migrate_net_ether_prefix": "net: EtherType=0x",
+  "migrate_net_ether_updated": "net: EtherTypeを更新しました\r\n",
+  "migrate_net_ether_usage": "usage: migrate net ether [get|set <hex>]\r\n"
 }
 

@@ -37,7 +37,25 @@
   , "sec_nxe_on": "安全: EFER.NXE=启用\r\n"
   , "sec_nxe_off": "安全: EFER.NXE=未启用\r\n"
   , "sec_summary_ok": "安全: 保护正常（WP/SMEP/SMAP/NXE）\r\n"
-  , "sec_summary_ng": "安全: 保护未完全启用\r\n"
+  , "sec_summary_ng": "安全: 保护未完全启用\r\n",
+  "migrate_track_start_ok": "migrate: 已开始跟踪\r\n",
+  "migrate_track_start_fail": "migrate: 启动失败\r\n",
+  "migrate_track_stop_ok": "migrate: 已停止跟踪\r\n",
+  "migrate_track_stop_fail": "migrate: 停止失败\r\n",
+  "migrate_chan_new_ok": "migrate: 通道创建成功\r\n",
+  "migrate_chan_new_fail": "migrate: 通道创建失败\r\n",
+  "migrate_chan_cleared": "migrate: 通道已清空\r\n",
+  "migrate_no_buffer": "migrate: 无缓冲区\r\n",
+  "migrate_net_mac_prefix": "net: MAC=",
+  "migrate_net_mtu_prefix": "net: MTU=",
+  "migrate_net_mac_updated": "net: 已更新MAC\r\n",
+  "migrate_net_mtu_updated": "net: 已更新MTU\r\n",
+  "migrate_net_usage": "usage: migrate net [mac|mtu] ...\r\n",
+  "migrate_net_mac_usage": "usage: migrate net mac [get|set xx:xx:xx:xx:xx:xx]\r\n",
+  "migrate_net_mtu_usage": "usage: migrate net mtu [get|set <n>]\r\n",
+  "migrate_net_ether_prefix": "net: EtherType=0x",
+  "migrate_net_ether_updated": "net: 已更新EtherType\r\n",
+  "migrate_net_ether_usage": "usage: migrate net ether [get|set <hex>]\r\n"
 }
 
 
