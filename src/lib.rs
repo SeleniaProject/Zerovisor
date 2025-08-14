@@ -11,5 +11,6 @@ pub mod iommu;
 pub mod ctl;
 pub mod hv;
 pub mod obs;
+pub mod diag;
 
 
