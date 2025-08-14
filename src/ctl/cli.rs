@@ -202,10 +202,19 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
         }
         if cmd.eq_ignore_ascii_case("version") {
             let stdout = system_table.stdout();
-            let mut buf = [0u8; 96]; let mut n = 0;
+            let mut buf = [0u8; 192]; let mut n = 0;
             for &b in b"zerovisor " { buf[n] = b; n += 1; }
             for &b in env!("CARGO_PKG_VERSION").as_bytes() { buf[n] = b; n += 1; }
-            for &b in b" (x86_64-uefi)\r\n" { buf[n] = b; n += 1; }
+            for &b in b" (x86_64-uefi)" { buf[n] = b; n += 1; }
+            // Print compiled feature flags for quick introspection
+            for &b in b" features=[" { buf[n] = b; n += 1; }
+            let mut first = true;
+            #[cfg(feature = "snp")]
+            { if !first { buf[n] = b' '; n += 1; } for &c in b"snp" { buf[n] = c; n += 1; } first = false; }
+            #[cfg(feature = "virtio-net")]
+            { if !first { buf[n] = b' '; n += 1; } for &c in b"virtio-net" { buf[n] = c; n += 1; } first = false; }
+            if first { for &c in b"none" { buf[n] = c; n += 1; } }
+            for &b in b"]\r\n" { buf[n] = b; n += 1; }
             let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
             continue;
         }
