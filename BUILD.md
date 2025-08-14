@@ -106,6 +106,19 @@ You can also sample translations/walks across all BDFs in a domain:
 iommu sample dom=<id> iova=<hex> [count=<n>] [walk] [xlate]
 ```
 
+For quick end-to-end setup and validation, use:
+
+```text
+iommu quick          # plan -> apply-safe -> verify -> verify-map -> invalidate
+```
+
+Persist/restore IOMMU assignments across boots via UEFI variables:
+
+```text
+iommu cfg save       # save current seg:bus:dev.func -> domain assignments
+iommu cfg load       # restore and re-apply, then refresh VT-d caches
+```
+
 ## Notes
 
 - The bootstrap prints a short banner to the UEFI text console. If you do not see any output, verify that your firmware console is enabled and that the file was placed under the standard removable media path (`EFI/BOOT/BOOTX64.EFI`).
