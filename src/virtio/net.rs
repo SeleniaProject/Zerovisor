@@ -509,3 +509,55 @@ pub fn tx_send_hex(system_table: &mut SystemTable<Boot>, hex: &str) -> usize {
     tx_send(system_table, &buf[..n])
 }
 
+/// Build an Ethernet frame using migrate config (dest MAC/EtherType) and send.
+pub fn tx_send_eth(system_table: &mut SystemTable<Boot>, payload: &[u8]) -> usize {
+    // Ethernet header: 6(dst) + 6(src) + 2(ethertype)
+    let mut frame = [0u8; 1600];
+    let mut n = 0usize;
+    let dmac = crate::migrate::net_get_dest_mac();
+    for i in 0..6 { frame[n] = dmac[i]; n += 1; }
+    // Source MAC is unknown at this bootstrap stage; leave zeros
+    for _ in 0..6 { frame[n] = 0u8; n += 1; }
+    let et = crate::migrate::net_get_ethertype();
+    frame[n] = ((et >> 8) & 0xFF) as u8; n += 1;
+    frame[n] = (et & 0xFF) as u8; n += 1;
+    // Copy payload with bounds
+    let max_copy = core::cmp::min(payload.len(), frame.len().saturating_sub(n));
+    unsafe { core::ptr::copy_nonoverlapping(payload.as_ptr(), frame.as_mut_ptr().add(n), max_copy); }
+    n += max_copy;
+    tx_send(system_table, &frame[..n])
+}
+
+/// Parse ASCII hex payload and send as Ethernet frame with configured MAC/EtherType.
+pub fn tx_send_eth_hex(system_table: &mut SystemTable<Boot>, hex: &str) -> usize {
+    let mut payload = [0u8; 1500];
+    let mut n = 0usize;
+    let b = hex.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        while i < b.len() {
+            let c = b[i];
+            if c == b' ' || c == b':' || c == b',' || c == b'\t' || c == b'\n' || c == b'\r' { i += 1; continue; }
+            break;
+        }
+        if i >= b.len() { break; }
+        let mut val: u8 = 0; let mut nyb = 0u8;
+        for _ in 0..2 {
+            if i >= b.len() { break; }
+            let c = b[i];
+            let d = if c >= b'0' && c <= b'9' { c - b'0' }
+                    else if c >= b'a' && c <= b'f' { 10 + (c - b'a') }
+                    else if c >= b'A' && c <= b'F' { 10 + (c - b'A') }
+                    else { 0xFF };
+            if d == 0xFF { break; }
+            val = if nyb == 0 { d << 4 } else { val | d };
+            nyb += 1; i += 1;
+        }
+        if nyb == 0 { break; }
+        if nyb == 1 { val = val & 0xF0; }
+        if n < payload.len() { payload[n] = val; n += 1; } else { break; }
+    }
+    if n == 0 { return 0; }
+    tx_send_eth(system_table, &payload[..n])
+}
+
