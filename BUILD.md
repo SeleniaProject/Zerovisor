@@ -81,6 +81,31 @@ Notes:
 
 > Note: Firmware, paths, and command lines vary by installation. If you use a physical USB stick, format it as FAT32 and create the same `EFI/BOOT/BOOTX64.EFI` path.
 
+## Quick self-test (IOMMU)
+
+Once Zerovisor boots and the CLI prompt (`> `) appears on the UEFI console, you can run a conservative VT-d self-test to validate minimal setup:
+
+```text
+iommu                 # probe & report VT-d/AMD-Vi and DMAR/IVRS summaries
+iommu plan            # print planned context assignments from current state
+iommu apply-safe      # disable TE, apply contexts+mappings, enable TE
+iommu selftest quick  # run plan/apply/verify/(invalidate) and sample walk/xlate
+```
+
+The self-test command accepts options:
+
+- `quick`: uses a compact apply path.
+- `no-apply`: skip re-applying contexts/mappings.
+- `no-inv`: skip global invalidate at the end.
+- `dom=<id>`: restrict sampling to a specific domain.
+- `walk=<n>` / `xlate=<n>`: number of walk/translate samples.
+
+You can also sample translations/walks across all BDFs in a domain:
+
+```text
+iommu sample dom=<id> iova=<hex> [count=<n>] [walk] [xlate]
+```
+
 ## Notes
 
 - The bootstrap prints a short banner to the UEFI text console. If you do not see any output, verify that your firmware console is enabled and that the file was placed under the standard removable media path (`EFI/BOOT/BOOTX64.EFI`).

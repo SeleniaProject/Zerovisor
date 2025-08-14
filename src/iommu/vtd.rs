@@ -1176,3 +1176,108 @@ pub fn verify_mappings(system_table: &mut SystemTable<Boot>) {
 }
 
 
+
+// --- Self-test helpers ---
+
+#[derive(Clone, Copy)]
+pub struct SelfTestConfig {
+    pub quick: bool,
+    pub do_apply: bool,
+    pub do_invalidate: bool,
+    pub test_domain: Option<u16>,
+    pub walk_samples: u32,
+    pub xlate_samples: u32,
+}
+
+impl Default for SelfTestConfig {
+    fn default() -> Self {
+        Self {
+            quick: false,
+            do_apply: true,
+            do_invalidate: true,
+            test_domain: None,
+            walk_samples: 2,
+            xlate_samples: 2,
+        }
+    }
+}
+
+/// Run a conservative VT-d self-test: plan→apply→verify→(invalidate)→stats/summary.
+/// Optionally sample translate/walk on first mapped IOVA for a BDF within the domain.
+pub fn selftest(system_table: &mut SystemTable<Boot>, cfg: SelfTestConfig) {
+    let _ = system_table.stdout().write_str("VT-d: selftest start\r\n");
+
+    if cfg.do_apply {
+        plan_assignments(system_table);
+        if cfg.quick {
+            apply_and_refresh(system_table);
+        } else {
+            apply_safe(system_table);
+        }
+    }
+
+    verify_state(system_table);
+    verify_mappings(system_table);
+
+    if cfg.do_invalidate { invalidate_all(system_table); }
+
+    // Optional: sample a walk/xlate on first domain assignment + mapping
+    let mut sampled = false;
+    let mut sample_seg: u16 = 0; let mut sample_bus: u8 = 0; let mut sample_dev: u8 = 0; let mut sample_func: u8 = 0; let mut sample_dom: u16 = 0;
+    crate::iommu::state::list_assignments(|seg,bus,dev,func,dom| {
+        if sampled { return; }
+        if let Some(filter) = cfg.test_domain { if filter != dom { return; } }
+        sampled = true; sample_seg = seg; sample_bus = bus; sample_dev = dev; sample_func = func; sample_dom = dom;
+    });
+    if sampled {
+        let mut iova_sample: Option<u64> = None;
+        crate::iommu::state::list_mappings(|dom,iova,_pa,_len,_r,_w,_x| {
+            if iova_sample.is_none() && dom == sample_dom { iova_sample = Some(iova); }
+        });
+        if let Some(iova) = iova_sample {
+            // Perform a few translate/walk samples around the chosen IOVA
+            let mut n = 0u32;
+            while n < cfg.xlate_samples { translate_bdf_iova(system_table, sample_seg, sample_bus, sample_dev, sample_func, iova); n = n.saturating_add(1); }
+            n = 0;
+            while n < cfg.walk_samples { walk_bdf_iova(system_table, sample_seg, sample_bus, sample_dev, sample_func, iova); n = n.saturating_add(1); }
+        } else {
+            let _ = system_table.stdout().write_str("selftest: no mapping found for sampled domain\r\n");
+        }
+    } else {
+        let _ = system_table.stdout().write_str("selftest: no assignment found\r\n");
+    }
+
+    report_stats(system_table);
+    report_summary(system_table);
+    let _ = system_table.stdout().write_str("VT-d: selftest done\r\n");
+}
+
+
+/// Sample translate/walk for all BDFs assigned to a given domain id.
+/// Parameters:
+/// - domid: target domain id
+/// - iova: IOVA to translate/walk
+/// - count: repeat count per BDF (minimum 1)
+/// - do_walk/do_xlate: control which operations to run
+pub fn sample_walk_xlate_for_domain(
+    system_table: &mut SystemTable<Boot>,
+    domid: u16,
+    iova: u64,
+    count: usize,
+    do_walk: bool,
+    do_xlate: bool,
+) {
+    let mut ran_any = false;
+    crate::iommu::state::list_assignments(|seg,bus,dev,func,dom| {
+        if dom != domid { return; }
+        ran_any = true;
+        let mut n = 0usize;
+        let reps = if count == 0 { 1 } else { count };
+        while n < reps {
+            if do_xlate { translate_bdf_iova(system_table, seg, bus, dev, func, iova); }
+            if do_walk { walk_bdf_iova(system_table, seg, bus, dev, func, iova); }
+            n = n.saturating_add(1);
+        }
+    });
+    if !ran_any { let _ = system_table.stdout().write_str("sample: no BDFs in domain\r\n"); }
+}

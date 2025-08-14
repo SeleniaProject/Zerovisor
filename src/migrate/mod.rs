@@ -715,8 +715,9 @@ pub fn chan_dump(system_table: &mut SystemTable<Boot>, mut want: usize, hex: boo
             return;
         }
     }
-    let lang = crate::i18n::detect_lang(system_table);
-    let _ = stdout.write_str(crate::i18n::t(lang, crate::i18n::key::MIG_NO_BUFFER));
+    let lang = crate::i18n::detect_lang(&*system_table);
+    let stdout2 = system_table.stdout();
+    let _ = stdout2.write_str(crate::i18n::t(lang, crate::i18n::key::MIG_NO_BUFFER));
 }
 
 /// Export a contiguous guest-physical range using identity mapping assumption.
@@ -967,7 +968,7 @@ fn elapsed_us_since(start_tsc: u64, system_table: &SystemTable<Boot>) -> u64 {
     (dt.saturating_mul(1_000_000)) / hz
 }
 
-pub fn session_elapsed(system_table: &SystemTable<Boot>) {
+pub fn session_elapsed(system_table: &mut SystemTable<Boot>) {
     let us = unsafe { elapsed_us_since(SESSION_START_TSC, system_table) };
     let stdout = system_table.stdout();
     let mut buf = [0u8; 64]; let mut n = 0;
@@ -977,7 +978,7 @@ pub fn session_elapsed(system_table: &SystemTable<Boot>) {
     let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
 }
 
-pub fn session_bw(system_table: &SystemTable<Boot>) {
+pub fn session_bw(system_table: &mut SystemTable<Boot>) {
     let us = unsafe { elapsed_us_since(SESSION_START_TSC, system_table) };
     let bytes = crate::obs::metrics::MIG_CB_WRITTEN_BYTES.load(core::sync::atomic::Ordering::Relaxed);
     let stdout = system_table.stdout();
@@ -990,7 +991,7 @@ pub fn session_bw(system_table: &SystemTable<Boot>) {
     let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
 }
 
-pub fn session_bw_net(system_table: &SystemTable<Boot>) {
+pub fn session_bw_net(system_table: &mut SystemTable<Boot>) {
     let us = unsafe { elapsed_us_since(SESSION_START_TSC, system_table) };
     let bytes = crate::obs::metrics::MIG_NET_TX_BYTES.load(core::sync::atomic::Ordering::Relaxed);
     let stdout = system_table.stdout();
@@ -1425,11 +1426,16 @@ pub fn send_ctrl(system_table: &mut SystemTable<Boot>, ack: bool, seq_to_ref: u3
         ExportSink::Buffer => { let mut w = BufferWriter; frame_and_send_ctrl(&mut w, if ack { CTRL_ACK } else { CTRL_NAK }, seq_to_ref); }
         ExportSink::Null => { let mut w = NullWriter; frame_and_send_ctrl(&mut w, if ack { CTRL_ACK } else { CTRL_NAK }, seq_to_ref); }
         ExportSink::Snp => { let mut w = SnpWriter::new(system_table); frame_and_send_ctrl(&mut w, if ack { CTRL_ACK } else { CTRL_NAK }, seq_to_ref); }
+        ExportSink::Virtio => {
+            #[cfg(feature = "virtio-net")]
+            { let mut w = VirtioNetWriter { system_table }; frame_and_send_ctrl(&mut w, if ack { CTRL_ACK } else { CTRL_NAK }, seq_to_ref); }
+            #[cfg(not(feature = "virtio-net"))]
+            { let mut w = NullWriter; frame_and_send_ctrl(&mut w, if ack { CTRL_ACK } else { CTRL_NAK }, seq_to_ref); }
+        }
     }
 }
 
 pub fn chan_handle_ctrl(system_table: &mut SystemTable<Boot>, limit: usize) {
-    let stdout = system_table.stdout();
     unsafe {
         if let Some(b) = G_BUF.as_ref() {
             let start = if b.len == 0 { 0 } else { (b.wpos + b.cap - b.len) % b.cap };
@@ -1452,15 +1458,15 @@ pub fn chan_handle_ctrl(system_table: &mut SystemTable<Boot>, limit: usize) {
                     if payload_len > take { let _ = cur.skip(payload_len - take); }
                     let code = body[0];
                     let seq = le_u32(&body[1..5]);
-                    // Action on NAK: trigger resend from seq to configured sink
-                    if code == CTRL_NAK {
-                        crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_RESEND_TRIGGERS).inc();
-                        let sink = ctrl_get_resend_sink();
-                        let (_f,_b) = resend_from(system_table, seq, 0, false, sink);
-                        if ctrl_get_auto_nak() { send_ctrl(system_table, false, seq, sink); }
-                    }
+                // Action on NAK: trigger resend from seq to configured sink
+                if code == CTRL_NAK {
+                    crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_RESEND_TRIGGERS).inc();
+                    let sink = ctrl_get_resend_sink();
+                    let (_f,_b) = resend_from(system_table, seq, 0, false, sink);
+                    if ctrl_get_auto_nak() { send_ctrl(system_table, false, seq, sink); }
+                }
                     if code == CTRL_ACK {
-                        if ctrl_get_auto_ack() { let sink = ctrl_get_resend_sink(); send_ctrl(system_table, true, seq, sink); }
+                    if ctrl_get_auto_ack() { let sink = ctrl_get_resend_sink(); send_ctrl(system_table, true, seq, sink); }
                     }
                     handled += 1;
                     let mut out = [0u8; 64]; let mut n = 0;
@@ -1470,6 +1476,7 @@ pub fn chan_handle_ctrl(system_table: &mut SystemTable<Boot>, limit: usize) {
                     for &bch in b" seq=" { out[n] = bch; n += 1; }
                     n += crate::firmware::acpi::u32_to_dec(seq, &mut out[n..]);
                     out[n] = b'\r'; n += 1; out[n] = b'\n'; n += 1;
+                    let stdout = system_table.stdout();
                     let _ = stdout.write_str(core::str::from_utf8(&out[..n]).unwrap_or("\r\n"));
                 } else {
                     let _ = cur.skip(payload_len);
@@ -1479,6 +1486,7 @@ pub fn chan_handle_ctrl(system_table: &mut SystemTable<Boot>, limit: usize) {
         }
     }
     let lang = crate::i18n::detect_lang(&*system_table);
+    let stdout = system_table.stdout();
     let _ = stdout.write_str(crate::i18n::t(lang, crate::i18n::key::MIG_NO_BUFFER));
 }
 
@@ -1626,10 +1634,10 @@ pub fn chan_verify_ex(system_table: &mut SystemTable<Boot>, limit: usize, quiet:
                 // Peek header
                 let mut hdr_bytes = [0u8; 32];
                 let mut tmp = cur; // copy
-                if !unsafe { tmp.read_into(&mut hdr_bytes) } { break; }
+                if !tmp.read_into(&mut hdr_bytes) { break; }
                 if &hdr_bytes[0..4] != &MAGIC {
                     // realign by one byte
-                    if !unsafe { cur.skip(1) } { break; }
+                    if !cur.skip(1) { break; }
                     continue;
                 }
                 let ver = hdr_bytes[4]; let typ = hdr_bytes[5];
@@ -1639,10 +1647,10 @@ pub fn chan_verify_ex(system_table: &mut SystemTable<Boot>, limit: usize, quiet:
                 let payload_len = le_u32(&hdr_bytes[20..24]) as usize;
                 let crc = le_u32(&hdr_bytes[24..28]);
                 // Consume header
-                let _ = unsafe { cur.read_into(&mut hb[..size_of::<FrameHeader>()]) };
+                let _ = cur.read_into(&mut hb[..size_of::<FrameHeader>()]);
                 if cur.remaining < payload_len { break; }
-                let ccalc = unsafe { cur.checksum(payload_len) };
-                let _ = unsafe { cur.skip(payload_len) };
+                let ccalc = cur.checksum(payload_len);
+                let _ = cur.skip(payload_len);
                 let good = ccalc == crc;
                 frames += 1; if good { ok += 1; } else { bad += 1; }
                 // Track simple ordering diagnostics
@@ -1713,11 +1721,11 @@ pub fn replay_to_buffer(system_table: &mut SystemTable<Boot>, max_pages: usize) 
             let mut hdr = [0u8; 32];
             while cur.remaining >= size_of::<FrameHeader>() && (max_pages == 0 || pages_done < max_pages) {
                 // Peek alignment
-                let mut tmp = cur; if !unsafe { tmp.read_into(&mut hdr) } { break; }
-                if &hdr[0..4] != &MAGIC { let _ = unsafe { cur.skip(1) }; continue; }
+                    let mut tmp = cur; if !tmp.read_into(&mut hdr) { break; }
+                    if &hdr[0..4] != &MAGIC { let _ = cur.skip(1); continue; }
                 let payload_len = le_u32(&hdr[20..24]) as usize;
                 let flags = (hdr[6] as u16) | ((hdr[7] as u16) << 8);
-                let _ = unsafe { cur.read_into(&mut hdr) };
+                    let _ = cur.read_into(&mut hdr);
                 // Bounds
                 if cur.remaining < payload_len { break; }
                 // Reconstruct into scratch: either raw 4KiB or RLE expand
@@ -1728,18 +1736,18 @@ pub fn replay_to_buffer(system_table: &mut SystemTable<Boot>, max_pages: usize) 
                     while copied < to_read {
                         let take = core::cmp::min(to_read - copied, 64);
                         let mut buf = [0u8; 64];
-                        if !unsafe { cur.read_into(&mut buf[..take]) } { errors += 1; break; }
+                        if !cur.read_into(&mut buf[..take]) { errors += 1; break; }
                         unsafe { core::ptr::copy_nonoverlapping(buf.as_ptr(), scratch.add(copied), take); }
                         copied += take;
                     }
-                    if payload_len > to_read { let _ = unsafe { cur.skip(payload_len - to_read) }; }
+                        if payload_len > to_read { let _ = cur.skip(payload_len - to_read); }
                 } else {
                     // RLE decompress
                     let mut wrote = 0usize;
                     while wrote < 4096 {
                         if cur.remaining < 2 { errors += 1; break; }
                         let mut pair = [0u8; 2];
-                        if !unsafe { cur.read_into(&mut pair) } { errors += 1; break; }
+                        if !cur.read_into(&mut pair) { errors += 1; break; }
                         let v = pair[0]; let run = pair[1] as usize;
                         if wrote + run > 4096 { errors += 1; break; }
                         unsafe { core::ptr::write_bytes(scratch.add(wrote), v, run); }

@@ -196,7 +196,7 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             let _ = system_table.stdout().write_str("usage: migrate cfg [save|load]\r\n");
             continue;
         }
-            let _ = stdout.write_str("  iommu: info | units | root <bus> | lsctx <bus> | dump <bus:dev.func> | plan | validate | verify | verify-map | xlate bdf=<seg:bus:dev.func> iova=<hex> | walk bdf=<seg:bus:dev.func> iova=<hex> | apply | apply-refresh | apply-safe | sync | invalidate | invalidate dom=<id> | invalidate bdf=<seg:bus:dev.func> | hard-invalidate | fsts | fclear | stats | summary | selftest [quick] [no-apply] [no-inv] [dom=<id>] [walk=<n>] [xlate=<n>] | amdv enable|amdv disable\r\n");
+            let _ = stdout.write_str("  iommu: info | units | root <bus> | lsctx <bus> | dump <bus:dev.func> | plan | validate | verify | verify-map | xlate bdf=<seg:bus:dev.func> iova=<hex> | walk bdf=<seg:bus:dev.func> iova=<hex> | apply | apply-refresh | apply-safe | sync | invalidate | invalidate dom=<id> | invalidate bdf=<seg:bus:dev.func> | hard-invalidate | fsts | fclear | stats | summary | selftest [quick] [no-apply] [no-inv] [dom=<id>] [walk=<n>] [xlate=<n>] | sample dom=<id> iova=<hex> [count=<n>] [walk] [xlate] | amdv enable|amdv disable\r\n");
             let _ = stdout.write_str("  dom: new | destroy <id> | purge <id> | seg:bus:dev.func assign <id> | seg:bus:dev.func unassign | list | map dom=<id> iova=<hex> pa=<hex> len=<hex> perm=[rwx] | unmap dom=<id> iova=<hex> len=<hex> | mappings | dump\r\n");
             continue;
         }
@@ -466,6 +466,21 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
         }
         if cmd.eq_ignore_ascii_case("iommu stats") {
             vtd::report_stats(system_table);
+            continue;
+        }
+        if cmd.starts_with("iommu sample ") {
+            // iommu sample dom=<id> iova=<hex> [count=<n>] [walk] [xlate]
+            let rest = &cmd[13..].trim();
+            let mut dom: Option<u16> = None; let mut iova: Option<u64> = None; let mut count: usize = 1; let mut do_walk = true; let mut do_xlate = true;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("dom=") { dom = v.parse::<u16>().ok(); continue; }
+                if let Some(v) = tok.strip_prefix("iova=") { iova = u64::from_str_radix(v.trim_start_matches("0x"), 16).ok(); continue; }
+                if let Some(v) = tok.strip_prefix("count=") { let _ = v.parse::<usize>().map(|n| count = n); continue; }
+                if tok.eq_ignore_ascii_case("walk") { do_xlate = false; continue; }
+                if tok.eq_ignore_ascii_case("xlate") { do_walk = false; continue; }
+            }
+            if let (Some(domid), Some(iova)) = (dom, iova) { vtd::sample_walk_xlate_for_domain(system_table, domid, iova, count, do_walk, do_xlate); continue; }
+            let _ = system_table.stdout().write_str("usage: iommu sample dom=<id> iova=<hex> [count=<n>] [walk] [xlate]\r\n");
             continue;
         }
         if cmd.starts_with("iommu selftest") {
