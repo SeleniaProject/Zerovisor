@@ -32,6 +32,7 @@ impl Vm {
         let id = VmId(NEXT_VM_ID.fetch_add(1, Ordering::Relaxed));
         crate::obs::metrics::Counter::new(&crate::obs::metrics::VM_CREATED).inc();
         crate::obs::trace::emit(crate::obs::trace::Event::VmCreate(id.0));
+        crate::diag::audit::record(crate::diag::audit::AuditKind::VmCreate(id.0));
         // Detect vendor
         let vendor = match crate::arch::x86::vm::detect_vendor() {
             crate::arch::x86::vm::Vendor::Intel => HvVendor::Intel,
@@ -56,6 +57,7 @@ impl Vm {
     pub fn start(&self, system_table: &mut SystemTable<Boot>) {
         crate::obs::metrics::Counter::new(&crate::obs::metrics::VM_STARTED).inc();
         crate::obs::trace::emit(crate::obs::trace::Event::VmStart(self.id.0));
+        crate::diag::audit::record(crate::diag::audit::AuditKind::VmStart(self.id.0));
         match self.vendor {
             HvVendor::Intel => {
                 if crate::arch::x86::vm::vmx::vmx_preflight_available() {
@@ -78,7 +80,17 @@ impl Vm {
     pub fn destroy(self) {
         crate::obs::trace::emit(crate::obs::trace::Event::VmStop(self.id.0));
         crate::obs::trace::emit(crate::obs::trace::Event::VmDestroy(self.id.0));
+        crate::diag::audit::record(crate::diag::audit::AuditKind::VmStop(self.id.0));
+        crate::diag::audit::record(crate::diag::audit::AuditKind::VmDestroy(self.id.0));
         let _ = self;
+    }
+
+    pub fn pause(&self) {
+        crate::obs::trace::emit(crate::obs::trace::Event::VmStop(self.id.0));
+    }
+
+    pub fn resume(&self) {
+        crate::obs::trace::emit(crate::obs::trace::Event::VmStart(self.id.0));
     }
 }
 

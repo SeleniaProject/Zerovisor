@@ -10,6 +10,8 @@ mod firmware;
 mod time;
 mod mm;
 mod util;
+mod obs;
+mod diag;
 
 // For formatted writes to UEFI text output
 use core::fmt::Write as _;
@@ -22,6 +24,8 @@ use core::fmt::Write as _;
 fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     // Print a minimal initialization banner to the UEFI console using i18n.
     {
+        // Record boot start in audit log for forensics.
+        crate::diag::audit::record(crate::diag::audit::AuditKind::BootStart);
         // Detect features first without borrowing stdout, to satisfy the borrow checker.
         let b_vmx = crate::arch::x86::cpuid::has_vmx();
         let b_svm = crate::arch::x86::cpuid::has_svm();
@@ -36,6 +40,8 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         let ivrs_hdr = if b_ivrs { crate::firmware::acpi::find_ivrs(&system_table) } else { None };
 
         let stdout = system_table.stdout();
+        // Install emergency stdout pointer for panic-time printing (best-effort).
+        unsafe { crate::diag::panic::install_stdout_ptr(core::ptr::from_mut(stdout)); }
         let _ = stdout.reset(false);
         let _ = stdout.write_str(i18n::t(lang, i18n::key::BANNER));
         let _ = stdout.write_str(i18n::t(lang, i18n::key::ENV));
@@ -110,6 +116,8 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
         let _ = stdout.write_str(if inv { "TSC: invariant\r\n" } else { "TSC: not invariant\r\n" });
 
         let _ = stdout.write_str(i18n::t(lang, i18n::key::READY));
+        // Record boot ready
+        crate::diag::audit::record(crate::diag::audit::AuditKind::BootReady);
     }
 
     // Virtualization preflight summary (non-intrusive)
@@ -166,6 +174,11 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
     {
         zerovisor::iommu::vtd::probe_and_report(&mut system_table);
         zerovisor::iommu::amdv::probe_and_report(&mut system_table);
+    }
+
+    // Security posture (W^X hints, SMEP/SMAP, NXE) best-effort report
+    {
+        zerovisor::diag::security::report_security(&mut system_table);
     }
 
     // Minimal AP bring-up: prepare a real-mode trampoline and count AP wakeups.
@@ -314,10 +327,10 @@ fn efi_main(_image: Handle, mut system_table: SystemTable<Boot>) -> Status {
 /// an undefined state. Environments with a working console will still show the
 /// last printed banner above.
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop {
-        // Spin forever to signal a terminal failure state.
-    }
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    // Best-effort console print without allocations
+    crate::diag::panic::report_panic(info);
+    loop { unsafe { core::arch::asm!("cli; hlt", options(nomem, nostack, preserves_flags)); } }
 }
 
 
