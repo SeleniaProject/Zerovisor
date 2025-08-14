@@ -1,4 +1,5 @@
 pub mod format;
+pub mod crc32;
 
 pub mod spinlock {
     #![allow(dead_code)]
