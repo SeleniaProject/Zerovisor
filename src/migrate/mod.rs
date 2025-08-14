@@ -23,6 +23,7 @@
 
 use core::ptr::read_volatile;
 use core::ptr::write_volatile;
+use core::fmt::Write as _; // enable write_str on UEFI text output
 use uefi::prelude::Boot;
 use uefi::table::SystemTable;
 use uefi::table::boot::MemoryType;
@@ -932,7 +933,7 @@ pub fn txlog_dump(system_table: &mut SystemTable<Boot>, count: usize) {
             let e = TX_LOG[idx % TX_LOG_CAP];
             let mut buf = [0u8; 96]; let mut i = 0;
             for &b in b"txlog: kind=" { buf[i] = b; i += 1; }
-            let k = match e.kind { TYP_PAGE => b"page", TYP_MANIFEST => b"manifest", TYP_CTRL => b"ctrl", _ => b"?" };
+            let k: &[u8] = match e.kind { TYP_PAGE => b"page", TYP_MANIFEST => b"manifest", TYP_CTRL => b"ctrl", _ => b"?" };
             for &b in k { buf[i] = b; i += 1; }
             for &b in b" seq=" { buf[i] = b; i += 1; }
             i += crate::firmware::acpi::u32_to_dec(e.seq, &mut buf[i..]);
@@ -1112,7 +1113,7 @@ fn rle_compress_page(pa: u64, out: &mut [u8]) -> Option<usize> {
     Some(w)
 }
 
-fn frame_and_send_page(mut writer: impl MigrWriter, page_index: u64, pa: u64, compress: bool, chunked: bool) -> (bool, usize) {
+fn frame_and_send_page(writer: &mut impl MigrWriter, page_index: u64, pa: u64, compress: bool, chunked: bool) -> (bool, usize) {
     // Try compression if requested
     let mut flags: u16 = 0;
     let mut payload_len: usize = 4096;
@@ -1133,9 +1134,9 @@ fn frame_and_send_page(mut writer: impl MigrWriter, page_index: u64, pa: u64, co
     hdr.crc32 = crate::util::crc32::crc32_ptr(payload_ptr, payload_len);
     // Send header then payload
     let hdr_bytes: &[u8] = unsafe { core::slice::from_raw_parts((&hdr as *const FrameHeader) as *const u8, core::mem::size_of::<FrameHeader>()) };
-    if chunked { write_chunked(&mut writer, hdr_bytes); } else { let _ = writer.write(hdr_bytes); }
+    if chunked { write_chunked(writer, hdr_bytes); } else { let _ = writer.write(hdr_bytes); }
     let payload_bytes: &[u8] = unsafe { core::slice::from_raw_parts(payload_ptr, payload_len) };
-    if chunked { write_chunked(&mut writer, payload_bytes); } else { let _ = writer.write(payload_bytes); }
+    if chunked { write_chunked(writer, payload_bytes); } else { let _ = writer.write(payload_bytes); }
     crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_FRAMES).inc();
     if (flags & FLAG_COMP) != 0 { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_COMPRESSED_PAGES).inc(); }
     else { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_RAW_PAGES).inc(); }
@@ -1143,7 +1144,7 @@ fn frame_and_send_page(mut writer: impl MigrWriter, page_index: u64, pa: u64, co
     (flags & FLAG_COMP) != 0, payload_len
 }
 
-fn frame_and_send_manifest(mut writer: impl MigrWriter, pages: u64, bytes: u64, chunked: bool) {
+fn frame_and_send_manifest(writer: &mut impl MigrWriter, pages: u64, bytes: u64, chunked: bool) {
     let mut body = [0u8; 16];
     // pages (8) + bytes (8) little-endian
     body[0] = (pages & 0xFF) as u8; body[1] = ((pages >> 8) & 0xFF) as u8; body[2] = ((pages >> 16) & 0xFF) as u8; body[3] = ((pages >> 24) & 0xFF) as u8;
@@ -1155,8 +1156,8 @@ fn frame_and_send_manifest(mut writer: impl MigrWriter, pages: u64, bytes: u64, 
     hdr.seq = seq;
     hdr.crc32 = crate::util::crc32::crc32(&body);
     let hdr_bytes: &[u8] = unsafe { core::slice::from_raw_parts((&hdr as *const FrameHeader) as *const u8, core::mem::size_of::<FrameHeader>()) };
-    if chunked { write_chunked(&mut writer, hdr_bytes); } else { let _ = writer.write(hdr_bytes); }
-    if chunked { write_chunked(&mut writer, &body); } else { let _ = writer.write(&body); }
+    if chunked { write_chunked(writer, hdr_bytes); } else { let _ = writer.write(hdr_bytes); }
+    if chunked { write_chunked(writer, &body); } else { let _ = writer.write(&body); }
     crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_MANIFESTS).inc();
     unsafe { tx_log_append(TYP_MANIFEST, seq, 0); }
 }
@@ -1201,7 +1202,7 @@ pub fn send_dirty_pages(system_table: &mut SystemTable<Boot>, compress: bool, si
                     else { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_HASH_SKIPPED).inc(); crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_HASH_BYTES_SAVED).add(4096); }
                     return;
                 }
-                let (_comp, plen) = frame_and_send_page(&mut w, page_idx, pa, compress, true);
+            let (_comp, plen) = frame_and_send_page(&mut w, page_idx, pa, compress, true);
                 frames += 1; pages += 1; bytes += (core::mem::size_of::<FrameHeader>() + plen) as u64;
             });
             // Trailer manifest
@@ -1404,15 +1405,15 @@ pub fn resend_from(system_table: &mut SystemTable<Boot>, from_seq: u32, max_coun
     (frames, bytes)
 }
 
-fn frame_and_send_ctrl(mut writer: impl MigrWriter, code: u8, seq_to_ref: u32) {
+fn frame_and_send_ctrl(writer: &mut impl MigrWriter, code: u8, seq_to_ref: u32) {
     let body = [code, (seq_to_ref & 0xFF) as u8, ((seq_to_ref >> 8) & 0xFF) as u8, ((seq_to_ref >> 16) & 0xFF) as u8, ((seq_to_ref >> 24) & 0xFF) as u8];
     let mut hdr = FrameHeader { magic: MAGIC, ver: 1, typ: TYP_CTRL, flags: 0, seq: 0, page_index: 0, payload_len: body.len() as u32, crc32: 0 };
     let seq = unsafe { let s = G_SEQ; G_SEQ = G_SEQ.wrapping_add(1); s };
     hdr.seq = seq;
     hdr.crc32 = crate::util::crc32::crc32(&body);
     let hdr_bytes: &[u8] = unsafe { core::slice::from_raw_parts((&hdr as *const FrameHeader) as *const u8, core::mem::size_of::<FrameHeader>()) };
-    write_chunked(&mut writer, hdr_bytes);
-    write_chunked(&mut writer, &body);
+    write_chunked(writer, hdr_bytes);
+    write_chunked(writer, &body);
     crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_CTRL_FRAMES).inc();
     if code == CTRL_ACK { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_ACKS).inc(); }
     if code == CTRL_NAK { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_NAKS).inc(); }
@@ -1664,7 +1665,7 @@ pub fn chan_verify_ex(system_table: &mut SystemTable<Boot>, limit: usize, quiet:
                 if !quiet {
                     let mut out = [0u8; 128]; let mut n = 0;
                     for &bch in b"verify: typ=" { out[n] = bch; n += 1; }
-                    let t = if typ == TYP_MANIFEST { b"manifest" } else { b"page" };
+            let t: &[u8] = if typ == TYP_MANIFEST { b"manifest" } else { b"page" };
                     for &bch in t { out[n] = bch; n += 1; }
                     for &bch in b" seq=" { out[n] = bch; n += 1; }
                     n += crate::firmware::acpi::u32_to_dec(seq, &mut out[n..]);
@@ -1675,7 +1676,7 @@ pub fn chan_verify_ex(system_table: &mut SystemTable<Boot>, limit: usize, quiet:
                     for &bch in b" len=" { out[n] = bch; n += 1; }
                     n += crate::firmware::acpi::u32_to_dec(payload_len as u32, &mut out[n..]);
                     for &bch in b" " { out[n] = bch; n += 1; }
-                    let s = if good { b"ok" } else { b"bad" };
+            let s: &[u8] = if good { b"ok" } else { b"bad" };
                     for &bch in s { out[n] = bch; n += 1; }
                     out[n] = b'\r'; n += 1; out[n] = b'\n'; n += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&out[..n]).unwrap_or("\r\n"));
