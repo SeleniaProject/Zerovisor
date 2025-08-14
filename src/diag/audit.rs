@@ -17,6 +17,9 @@ pub enum AuditKind {
     IommuDomainCreate(u16),
     IommuAssignAdded { seg: u16, bus: u8, dev: u8, func: u8, dom: u16 },
     IommuAssignRemoved { seg: u16, bus: u8, dev: u8, func: u8, dom: u16 },
+        MigrateStart(u64),
+        MigrateScan(u64, u64),
+        MigrateStop(u64),
 }
 
 const AUDIT_CAP: usize = 256;
@@ -85,6 +88,20 @@ pub fn dump(system_table: &mut SystemTable<Boot>) {
                 for &b in b" dom=" { buf[n] = b; n += 1; }
                 n += crate::firmware::acpi::u32_to_dec(dom as u32, &mut buf[n..]);
             }
+                AuditKind::MigrateStart(id) => {
+                    for &b in b"audit: migrate_start id=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]);
+                }
+                AuditKind::MigrateScan(id, pages) => {
+                    for &b in b"audit: migrate_scan id=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]);
+                    for &b in b" pages=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(pages as u32, &mut buf[n..]);
+                }
+                AuditKind::MigrateStop(id) => {
+                    for &b in b"audit: migrate_stop id=" { buf[n] = b; n += 1; }
+                    n += crate::firmware::acpi::u32_to_dec(id as u32, &mut buf[n..]);
+                }
         }
         buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
         let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
