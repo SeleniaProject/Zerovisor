@@ -55,9 +55,14 @@
   - 工数: 大
 
 ### フェーズ4: デバイス仮想化の基礎
-- [x] タスク: VirtIOコンソール/ブロック/ネット（最小）
+- [x] タスク: VirtIOコンソール/ブロック/ネット（最小→送受信対応まで拡張）
   - 成果物: `src/virtio/mod.rs`, `src/virtio/console.rs`, `src/virtio/block.rs`, `src/virtio/net.rs`
-  - 現状: ECAM走査・PCI Vendor Cap走査、virtio-consoleの最小ステータスハンドシェイク（ACK/DRIVER/DRIVER_OK）、virtio‑blk容量レポート、virtio‑net検出レポート
+  - 現状:
+    - ECAM走査・PCI Vendor Cap走査（common/notify/isr/device cfgの抽出）
+    - virtio-console: 最小ステータスハンドシェイク（ACK/DRIVER/DRIVER_OK）
+    - virtio‑blk: 容量レポート
+    - virtio‑net: modern (1.0+) TX/RX 実装（queue1=TX, queue0=RX）。queue初期化・desc/avail/used割当・queue enable・notify算出、FEATURES_OK/DRIVER_OK、used回収。
+    - `migrate` との統合: `sink=virtio` 送信経路と `virtio net pump/poll` 受信ポンプ/ポーリングをCLIから操作可能
   - 工数: 大
 - [x] タスク: VT‑d/AMD‑VI（IOMMU）初期化、デバイス保護ドメイン
   - 成果物: `src/iommu/vtd.rs`, `src/iommu/amdv.rs`
@@ -89,8 +94,9 @@
   - 成果物: `src/obs/*.rs`, `src/diag/*.rs`
   - 実装: 監査リングバッファ（`diag/audit.rs`）、VM/IOMMU操作の記録、CLI `audit`でダンプ。簡易パニックバナー（`diag/panic.rs`、将来拡張）。UEFIウォッチドッグのアーム/解除（`diag/watchdog.rs`）とCLI `wdog [off|<secs>]`。セキュリティ機能状態（CR0.WP/CR4.SMEP/SMAP/EFER.NXE）の報告（`diag/security.rs`、CLI `sec`）。
   - 工数: 中
-- [ ] タスク: ライブマイグレーション基盤（前提同期/ダーティページ追跡）
-  - 成果物: `src/migrate/*.rs`
+- [x] タスク: ライブマイグレーション基盤（前提同期/ダーティページ追跡/送受信/制御/可視化/永続化）
+  - 成果物: `src/migrate/mod.rs`, `src/util/crc32.rs`, `src/obs/metrics.rs`, `src/obs/trace.rs`, `src/diag/audit.rs`, `src/ctl/cli.rs`
+  - 実装（主な要素）: ダーティページ追跡（EPT/NPT A/D）、フレーミング、0/ハッシュ重複スキップ、RLE圧縮、Sink(Console/Null/Buffer/SNP/Virtio)、ACK/NAKと再送、送信ログ、受信ポンプ/ポーリング（SNP/virtio）、メトリクス、`summary`/`bw`、UEFI永続化（MAC/MTU/EtherType/既定sink/再送先/auto-ack/auto-nak/チャンク）、CLI統合
   - 工数: 大
  
 ### 受入基準の詳細（各フェーズ共通）
