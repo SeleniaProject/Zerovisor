@@ -63,20 +63,22 @@
   - 成果物: `src/iommu/vtd.rs`, `src/iommu/amdv.rs`
   - 現状/進捗:
     - VT‑d: DRHD列挙、RTADDR設定＋SRTP確認、TEのenable/disable観測、Root/Contextテーブル生成、Context Entry設定（AW/TT/DID/SLPTPTR）、二次PT（4KiB/2MiB）マッピング、SRTP粒度invalidate（all/dom/bdf/hard）、検証/同期/翻訳/歩査/統計CLIを実装
-    - AMD‑Vi: IVRS検出・要約・エントリ列挙まで（最小初期化は未実装）
-  - 残: CCMD/IOTLBによる正式invalidate（CIRG/IIRG/ICC/IVT、DMAドレイン）実装、AMD‑Vi最小初期化（IVHD→MMIO→Device Table→有効化）
+    - AMD‑Vi: IVRS検出・要約・エントリ列挙、ユニット登録（IVHD）・レポート、TEのenable/disable（Device Table/Command/Event/PPRは未実装）
+  - 残: CCMD/IOTLBによる正式invalidate（CIRG/IIRG/ICC/IVT、DMAドレイン）実装、AMD‑ViのDevice Table/Command Buffer/Event/PPRの設定と運用
   - 工数: 大
   - 備考: CLIによる管理プレーンからの観測・適用を重視（後述）
 
 ### フェーズ5: 管理プレーン最小機能
 - [x] タスク: シリアル/UEFIコンソール経由CLI（最小）
   - 成果物: `src/ctl/cli.rs`
-  - 現状: `help|info|virtio|iommu|pci|vm|trace|metrics|quit` をサポート
+  - 現状: `help|info|virtio|iommu|pci|vm|trace|metrics|audit|logs|loglevel|time|wdog|sec|lang|dump|quit` をサポート
   - 工数: 中
   - 進捗（主要サブコマンド）:
-    - `iommu`: `info|units|root <bus>|lsctx <bus>|dump <bus:dev.func>|plan|plan dom=<id>|validate|verify|verify-map|xlate bdf=<seg:bus:dev.func> iova=<hex>|walk bdf=<seg:bus:dev.func> iova=<hex>|apply|apply-refresh|apply-safe|sync|invalidate|invalidate dom=<id>|invalidate bdf=<seg:bus:dev.func>|hard-invalidate|fsts|fclear|stats|summary`
+    - `iommu`: `info|units|root <bus>|lsctx <bus>|dump <bus:dev.func>|plan|plan dom=<id>|validate|verify|verify-map|xlate bdf=<seg:bus:dev.func> iova=<hex>|walk bdf=<seg:bus:dev.func> iova=<hex>|apply|apply-refresh|apply-safe|sync|invalidate|invalidate dom=<id>|invalidate bdf=<seg:bus:dev.func>|hard-invalidate|fsts|fclear|stats|summary|amdv enable|amdv disable`
     - `dom`: `new|destroy <id>|purge <id>|seg:bus:dev.func assign <id>|seg:bus:dev.func unassign|list|map dom=<id> iova=<hex> pa=<hex> len=<hex> perm=[rwx]|unmap dom=<id> iova=<hex> len=<hex>|mappings|dump`
-    - `vm`: `new|start`
+    - `vm`: `new|start|pause|resume`
+    - `logs`: `logs`（リングダンプ）、`logs filter [level=<info|warn|error>] [cat=<prefix>]`
+    - その他: `audit`（監査ダンプ）、`loglevel [info|warn|error]`、`time [show|wait <usec> [busy|stall]]`、`wdog [off|<secs>]`、`sec`（セキュリティ状態報告）、`lang [en|ja|zh|auto]`、`dump [regs|idt|gdt]`
 - [x] タスク: VM作成/起動/停止/削除の基本API
   - 成果物: `src/hv/vm.rs`, `src/hv/vcpu.rs`
   - 現状: VM生成ID付与、vCPU開始/停止、Intel=VMXスモーク+EPT接続、AMD=SVMプレフライト+NPT準備（VMLAUNCH相当は未実装）
@@ -85,7 +87,7 @@
 ### フェーズ6: セキュリティと可用性強化
 - [x] タスク: 監査ログ、クラッシュダンプ、ウォッチドッグ
   - 成果物: `src/obs/*.rs`, `src/diag/*.rs`
-  - 実装: 監査リングバッファ（`diag/audit.rs`）、VM/IOMMU操作の記録、CLI `audit`でダンプ。簡易パニックバナー（`diag/panic.rs`、将来拡張）。UEFIウォッチドッグのアーム/解除（`diag/watchdog.rs`）とCLI `wdog [off|<secs>]`。
+  - 実装: 監査リングバッファ（`diag/audit.rs`）、VM/IOMMU操作の記録、CLI `audit`でダンプ。簡易パニックバナー（`diag/panic.rs`、将来拡張）。UEFIウォッチドッグのアーム/解除（`diag/watchdog.rs`）とCLI `wdog [off|<secs>]`。セキュリティ機能状態（CR0.WP/CR4.SMEP/SMAP/EFER.NXE）の報告（`diag/security.rs`、CLI `sec`）。
   - 工数: 中
 - [ ] タスク: ライブマイグレーション基盤（前提同期/ダーティページ追跡）
   - 成果物: `src/migrate/*.rs`
