@@ -17,6 +17,7 @@ use uefi::prelude::Boot;
 use uefi::table::SystemTable;
 use uefi::table::runtime::VariableVendor;
 use uefi::{cstr16};
+use core::sync::atomic::{AtomicU8, Ordering};
 
 /// Try to parse UEFI `PlatformLang` (RFC 3066 like "en-US", "ja-JP", "zh-CN").
 #[allow(dead_code)]
@@ -54,10 +55,33 @@ fn parse_platform_lang_ascii(bytes: &[u8]) -> Option<Lang> {
     None
 }
 
+// Optional runtime override (0: auto, 1: en, 2: ja, 3: zh)
+static OVERRIDE_LANG: AtomicU8 = AtomicU8::new(0);
+
+#[inline(always)]
+pub fn set_lang_override(l: Option<Lang>) {
+    let v = match l { None => 0u8, Some(Lang::En) => 1, Some(Lang::Ja) => 2, Some(Lang::Zh) => 3 };
+    OVERRIDE_LANG.store(v, Ordering::Relaxed);
+}
+
+#[inline(always)]
+fn read_lang_override() -> Option<Lang> {
+    match OVERRIDE_LANG.load(Ordering::Relaxed) {
+        1 => Some(Lang::En),
+        2 => Some(Lang::Ja),
+        3 => Some(Lang::Zh),
+        _ => None,
+    }
+}
+
 /// Select the language based on UEFI `PlatformLang` variable when available,
 /// falling back to English to maximize compatibility.
 #[inline(always)]
 pub fn detect_lang(system_table: &SystemTable<Boot>) -> Lang {
+    // If runtime override set, honor it
+    if let Some(ov) = read_lang_override() { return ov; }
+    // If persisted override exists in UEFI variable, use it
+    if let Some(persist) = read_persisted_override(system_table) { return persist; }
     // Read UEFI global variable: PlatformLang (CHAR8 RFC 3066 like "en-US")
     // Name is a CHAR16 string, vendor GUID is EFI_GLOBAL_VARIABLE:
     // 8BE4DF61-93CA-11D2-AA0D-00E098032B8C
@@ -74,6 +98,34 @@ pub fn detect_lang(system_table: &SystemTable<Boot>) -> Lang {
 
     // Final fallback to English.
     Lang::En
+}
+
+fn read_persisted_override(system_table: &SystemTable<Boot>) -> Option<Lang> {
+    let rs = system_table.runtime_services();
+    let name = cstr16!("ZerovisorLang");
+    let vendor = VariableVendor::GLOBAL_VARIABLE;
+    let mut buf = [0u8; 16];
+    if let Ok((data, _attrs)) = rs.get_variable(name, &vendor, &mut buf) {
+        if let Some(l) = parse_platform_lang_ascii(data) { return Some(l); }
+        // accept "auto" to clear override
+        let s = core::str::from_utf8(data).unwrap_or("");
+        if s.starts_with("auto") { return None; }
+    }
+    None
+}
+
+pub fn save_lang_override(system_table: &SystemTable<Boot>) {
+    let v = OVERRIDE_LANG.load(Ordering::Relaxed);
+    let rs = system_table.runtime_services();
+    let name = cstr16!("ZerovisorLang");
+    let vendor = VariableVendor::GLOBAL_VARIABLE;
+    let bytes: &[u8] = match v {
+        1 => b"en\0",
+        2 => b"ja\0",
+        3 => b"zh\0",
+        _ => b"auto\0",
+    };
+    let _ = rs.set_variable(name, &vendor, uefi::table::runtime::VariableAttributes::BOOTSERVICE_ACCESS, bytes);
 }
 
 /// Message keys used during bootstrap.
@@ -107,6 +159,16 @@ pub mod key {
     pub const VIRTIO_BLK_NONE: &str = "virtio_blk_none";
     pub const VIRTIO_NET: &str = "virtio_net";
     pub const VIRTIO_NET_NONE: &str = "virtio_net_none";
+    pub const SEC_WP_ON: &str = "sec_wp_on";
+    pub const SEC_WP_OFF: &str = "sec_wp_off";
+    pub const SEC_SMEP_ON: &str = "sec_smep_on";
+    pub const SEC_SMEP_OFF: &str = "sec_smep_off";
+    pub const SEC_SMAP_ON: &str = "sec_smap_on";
+    pub const SEC_SMAP_OFF: &str = "sec_smap_off";
+    pub const SEC_NXE_ON: &str = "sec_nxe_on";
+    pub const SEC_NXE_OFF: &str = "sec_nxe_off";
+    pub const SEC_SUMMARY_OK: &str = "sec_summary_ok";
+    pub const SEC_SUMMARY_NG: &str = "sec_summary_ng";
 }
 
 /// Resolve a message key for a given language.
@@ -143,6 +205,16 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::VIRTIO_NET_NONE => "VirtIO-net: not found\r\n",
             key::IOMMU_VTD_NONE => "VT-d: DMAR not found\r\n",
             key::IOMMU_AMDV_NONE => "AMD-Vi: IVRS not found\r\n",
+            key::SEC_WP_ON => "Security: CR0.WP=ON\r\n",
+            key::SEC_WP_OFF => "Security: CR0.WP=OFF\r\n",
+            key::SEC_SMEP_ON => "Security: CR4.SMEP=ON\r\n",
+            key::SEC_SMEP_OFF => "Security: CR4.SMEP=OFF\r\n",
+            key::SEC_SMAP_ON => "Security: CR4.SMAP=ON\r\n",
+            key::SEC_SMAP_OFF => "Security: CR4.SMAP=OFF\r\n",
+            key::SEC_NXE_ON => "Security: EFER.NXE=ON\r\n",
+            key::SEC_NXE_OFF => "Security: EFER.NXE=OFF\r\n",
+            key::SEC_SUMMARY_OK => "Security: protections OK (WP/SMEP/SMAP/NXE)\r\n",
+            key::SEC_SUMMARY_NG => "Security: protections NOT fully enabled\r\n",
             _ => "\r\n",
         },
         Lang::Ja => match key {
@@ -175,6 +247,16 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::VIRTIO_NET_NONE => "VirtIO-net: 見つかりません\r\n",
             key::IOMMU_VTD_NONE => "VT-d: DMARが見つかりません\r\n",
             key::IOMMU_AMDV_NONE => "AMD-Vi: IVRSが見つかりません\r\n",
+            key::SEC_WP_ON => "セキュリティ: CR0.WP=有効\r\n",
+            key::SEC_WP_OFF => "セキュリティ: CR0.WP=無効\r\n",
+            key::SEC_SMEP_ON => "セキュリティ: CR4.SMEP=有効\r\n",
+            key::SEC_SMEP_OFF => "セキュリティ: CR4.SMEP=無効\r\n",
+            key::SEC_SMAP_ON => "セキュリティ: CR4.SMAP=有効\r\n",
+            key::SEC_SMAP_OFF => "セキュリティ: CR4.SMAP=無効\r\n",
+            key::SEC_NXE_ON => "セキュリティ: EFER.NXE=有効\r\n",
+            key::SEC_NXE_OFF => "セキュリティ: EFER.NXE=無効\r\n",
+            key::SEC_SUMMARY_OK => "セキュリティ: 保護は有効（WP/SMEP/SMAP/NXE）\r\n",
+            key::SEC_SUMMARY_NG => "セキュリティ: 保護が十分ではありません\r\n",
             _ => "\r\n",
         },
         Lang::Zh => match key {
@@ -207,6 +289,16 @@ pub fn t(lang: Lang, key: &str) -> &'static str {
             key::VIRTIO_NET_NONE => "VirtIO-net: 未找到\r\n",
             key::IOMMU_VTD_NONE => "VT-d: 未找到DMAR\r\n",
             key::IOMMU_AMDV_NONE => "AMD-Vi: 未找到IVRS\r\n",
+            key::SEC_WP_ON => "安全: CR0.WP=启用\r\n",
+            key::SEC_WP_OFF => "安全: CR0.WP=未启用\r\n",
+            key::SEC_SMEP_ON => "安全: CR4.SMEP=启用\r\n",
+            key::SEC_SMEP_OFF => "安全: CR4.SMEP=未启用\r\n",
+            key::SEC_SMAP_ON => "安全: CR4.SMAP=启用\r\n",
+            key::SEC_SMAP_OFF => "安全: CR4.SMAP=未启用\r\n",
+            key::SEC_NXE_ON => "安全: EFER.NXE=启用\r\n",
+            key::SEC_NXE_OFF => "安全: EFER.NXE=未启用\r\n",
+            key::SEC_SUMMARY_OK => "安全: 保护正常（WP/SMEP/SMAP/NXE）\r\n",
+            key::SEC_SUMMARY_NG => "安全: 保护未完全启用\r\n",
             _ => "\r\n",
         },
     }
