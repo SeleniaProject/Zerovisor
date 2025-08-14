@@ -196,7 +196,7 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             let _ = system_table.stdout().write_str("usage: migrate cfg [save|load]\r\n");
             continue;
         }
-            let _ = stdout.write_str("  iommu: info | units | root <bus> | lsctx <bus> | dump <bus:dev.func> | plan | validate | verify | verify-map | xlate bdf=<seg:bus:dev.func> iova=<hex> | walk bdf=<seg:bus:dev.func> iova=<hex> | apply | apply-refresh | apply-safe | sync | invalidate | invalidate dom=<id> | invalidate bdf=<seg:bus:dev.func> | hard-invalidate | fsts | fclear | stats | summary | amdv enable|amdv disable\r\n");
+            let _ = stdout.write_str("  iommu: info | units | root <bus> | lsctx <bus> | dump <bus:dev.func> | plan | validate | verify | verify-map | xlate bdf=<seg:bus:dev.func> iova=<hex> | walk bdf=<seg:bus:dev.func> iova=<hex> | apply | apply-refresh | apply-safe | sync | invalidate | invalidate dom=<id> | invalidate bdf=<seg:bus:dev.func> | hard-invalidate | fsts | fclear | stats | summary | selftest [quick] [no-apply] [no-inv] [dom=<id>] [walk=<n>] [xlate=<n>] | amdv enable|amdv disable\r\n");
             let _ = stdout.write_str("  dom: new | destroy <id> | purge <id> | seg:bus:dev.func assign <id> | seg:bus:dev.func unassign | list | map dom=<id> iova=<hex> pa=<hex> len=<hex> perm=[rwx] | unmap dom=<id> iova=<hex> len=<hex> | mappings | dump\r\n");
             continue;
         }
@@ -466,6 +466,21 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
         }
         if cmd.eq_ignore_ascii_case("iommu stats") {
             vtd::report_stats(system_table);
+            continue;
+        }
+        if cmd.starts_with("iommu selftest") {
+            // iommu selftest [quick] [no-apply] [no-inv] [dom=<id>] [walk=<n>] [xlate=<n>]
+            let rest = cmd.strip_prefix("iommu selftest").unwrap_or("").trim();
+            let mut cfg = vtd::SelfTestConfig::default();
+            for tok in rest.split_whitespace() {
+                if tok.eq_ignore_ascii_case("quick") { cfg.quick = true; continue; }
+                if tok.eq_ignore_ascii_case("no-apply") { cfg.do_apply = false; continue; }
+                if tok.eq_ignore_ascii_case("no-inv") { cfg.do_invalidate = false; continue; }
+                if let Some(v) = tok.strip_prefix("dom=") { if let Ok(id) = v.parse::<u16>() { cfg.test_domain = Some(id); } continue; }
+                if let Some(v) = tok.strip_prefix("walk=") { if let Ok(n) = v.parse::<u32>() { cfg.walk_samples = n; } continue; }
+                if let Some(v) = tok.strip_prefix("xlate=") { if let Ok(n) = v.parse::<u32>() { cfg.xlate_samples = n; } continue; }
+            }
+            vtd::selftest(system_table, cfg);
             continue;
         }
         if cmd.eq_ignore_ascii_case("iommu enable") {
@@ -1065,6 +1080,38 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             crate::migrate::chan_handle_ctrl(system_table, limit);
             continue;
         }
+        if cmd.starts_with("migrate virtio poll") {
+            // migrate virtio poll [cycles=<n>] [sleep=<us>] [ctrl] [verify] [empty=<n>]
+            let rest = cmd.strip_prefix("migrate virtio poll").unwrap_or("").trim();
+            let mut cycles: usize = 0; // 0=infinite
+            let mut sleep_us: usize = 0;
+            let mut do_ctrl = false; let mut do_verify = false; let mut empty_limit: usize = 0;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("cycles=") { let _ = v.parse::<usize>().map(|n| cycles = n); continue; }
+                if let Some(v) = tok.strip_prefix("sleep=") { let _ = v.parse::<usize>().map(|n| sleep_us = n); continue; }
+                if let Some(v) = tok.strip_prefix("empty=") { let _ = v.parse::<usize>().map(|n| empty_limit = n); continue; }
+                if tok.eq_ignore_ascii_case("ctrl") { do_ctrl = true; continue; }
+                if tok.eq_ignore_ascii_case("verify") { do_verify = true; continue; }
+            }
+            crate::migrate::virtio_poll_ex(system_table, cycles, sleep_us, do_ctrl, do_verify, empty_limit);
+            continue;
+        }
+        if cmd.starts_with("migrate snp poll") {
+            // migrate snp poll [cycles=<n>] [sleep=<us>] [ctrl] [verify] [empty=<n>]
+            let rest = cmd.strip_prefix("migrate snp poll").unwrap_or("").trim();
+            let mut cycles: usize = 0; // 0=infinite
+            let mut sleep_us: usize = 0;
+            let mut do_ctrl = false; let mut do_verify = false; let mut empty_limit: usize = 0;
+            for tok in rest.split_whitespace() {
+                if let Some(v) = tok.strip_prefix("cycles=") { let _ = v.parse::<usize>().map(|n| cycles = n); continue; }
+                if let Some(v) = tok.strip_prefix("sleep=") { let _ = v.parse::<usize>().map(|n| sleep_us = n); continue; }
+                if let Some(v) = tok.strip_prefix("empty=") { let _ = v.parse::<usize>().map(|n| empty_limit = n); continue; }
+                if tok.eq_ignore_ascii_case("ctrl") { do_ctrl = true; continue; }
+                if tok.eq_ignore_ascii_case("verify") { do_verify = true; continue; }
+            }
+            crate::migrate::snp_poll_ex(system_table, cycles, sleep_us, do_ctrl, do_verify, empty_limit);
+            continue;
+        }
         if cmd.eq_ignore_ascii_case("trace clear") {
             crate::obs::trace::clear();
             let stdout = system_table.stdout();
@@ -1184,7 +1231,8 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
                     n += crate::firmware::acpi::u32_to_dec(cc, &mut buf[n..]); buf[n] = b'/'; n += 1;
                     n += crate::firmware::acpi::u32_to_dec(sc, &mut buf[n..]); buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
                     let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
-                    // Full filtered enumeration can be added here if needed
+                    // Full filtered enumeration
+                    crate::iommu::report_pci_by_class(system_table, cc as u8, sc as u8);
                     continue;
                 }
             }

@@ -118,3 +118,47 @@ pub fn report_dmar_scoped_devices_with_ids(system_table: &mut SystemTable<Boot>)
 }
 
 
+/// Enumerate endpoints filtered by PCI class/subclass and print compact lines.
+pub fn report_pci_by_class(system_table: &mut SystemTable<Boot>, class_code: u8, subclass: u8) {
+    if let Some(mcfg_hdr) = crate::firmware::acpi::find_mcfg(system_table) {
+        crate::firmware::acpi::mcfg_for_each_allocation_from(|a| {
+            let mut bus = a.start_bus;
+            while bus <= a.end_bus {
+                for dev in 0u8..32u8 {
+                    for func in 0u8..8u8 {
+                        let cfg = ecam_fn_base(a.base_address, a.start_bus, bus, dev, func);
+                        let vid = mmio_read16(cfg + 0x00);
+                        if vid == 0xFFFF { continue; }
+                        let did = mmio_read16(cfg + 0x02);
+                        let cls = mmio_read8(cfg + 0x0B);
+                        let sc = mmio_read8(cfg + 0x0A);
+                        if cls != class_code || sc != subclass { continue; }
+                        let stdout = system_table.stdout();
+                        let mut buf = [0u8; 128]; let mut n = 0;
+                        for &b in b"PCI(cls): seg=" { buf[n] = b; n += 1; }
+                        n += crate::firmware::acpi::u32_to_dec(a.pci_segment as u32, &mut buf[n..]);
+                        for &b in b" bus=" { buf[n] = b; n += 1; }
+                        n += crate::firmware::acpi::u32_to_dec(bus as u32, &mut buf[n..]);
+                        for &b in b" dev=" { buf[n] = b; n += 1; }
+                        n += crate::firmware::acpi::u32_to_dec(dev as u32, &mut buf[n..]);
+                        for &b in b" fn=" { buf[n] = b; n += 1; }
+                        n += crate::firmware::acpi::u32_to_dec(func as u32, &mut buf[n..]);
+                        for &b in b" vid=0x" { buf[n] = b; n += 1; }
+                        n += crate::util::format::u64_hex(vid as u64, &mut buf[n..]);
+                        for &b in b" did=0x" { buf[n] = b; n += 1; }
+                        n += crate::util::format::u64_hex(did as u64, &mut buf[n..]);
+                        for &b in b" class=" { buf[n] = b; n += 1; }
+                        n += crate::firmware::acpi::u32_to_dec(cls as u32, &mut buf[n..]);
+                        for &b in b"/" { buf[n] = b; n += 1; }
+                        n += crate::firmware::acpi::u32_to_dec(sc as u32, &mut buf[n..]);
+                        buf[n] = b'\r'; n += 1; buf[n] = b'\n'; n += 1;
+                        let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
+                    }
+                }
+                if bus == 0xFF { break; }
+                bus = bus.saturating_add(1);
+            }
+        }, mcfg_hdr);
+    }
+}
+
