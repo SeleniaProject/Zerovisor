@@ -28,5 +28,15 @@
   "virtio_net_none": "VirtIO-net: not found\r\n",
   "iommu_vtd_none": "VT-d: DMAR not found\r\n",
   "iommu_amdv_none": "AMD-Vi: IVRS not found\r\n"
+  , "sec_wp_on": "Security: CR0.WP=ON\r\n"
+  , "sec_wp_off": "Security: CR0.WP=OFF\r\n"
+  , "sec_smep_on": "Security: CR4.SMEP=ON\r\n"
+  , "sec_smep_off": "Security: CR4.SMEP=OFF\r\n"
+  , "sec_smap_on": "Security: CR4.SMAP=ON\r\n"
+  , "sec_smap_off": "Security: CR4.SMAP=OFF\r\n"
+  , "sec_nxe_on": "Security: EFER.NXE=ON\r\n"
+  , "sec_nxe_off": "Security: EFER.NXE=OFF\r\n"
+  , "sec_summary_ok": "Security: protections OK (WP/SMEP/SMAP/NXE)\r\n"
+  , "sec_summary_ng": "Security: protections NOT fully enabled\r\n"
 }
 

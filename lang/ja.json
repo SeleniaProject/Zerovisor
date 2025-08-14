@@ -28,5 +28,15 @@
   "virtio_net_none": "VirtIO-net: 見つかりません\r\n",
   "iommu_vtd_none": "VT-d: DMARが見つかりません\r\n",
   "iommu_amdv_none": "AMD-Vi: IVRSが見つかりません\r\n"
+  , "sec_wp_on": "セキュリティ: CR0.WP=有効\r\n"
+  , "sec_wp_off": "セキュリティ: CR0.WP=無効\r\n"
+  , "sec_smep_on": "セキュリティ: CR4.SMEP=有効\r\n"
+  , "sec_smep_off": "セキュリティ: CR4.SMEP=無効\r\n"
+  , "sec_smap_on": "セキュリティ: CR4.SMAP=有効\r\n"
+  , "sec_smap_off": "セキュリティ: CR4.SMAP=無効\r\n"
+  , "sec_nxe_on": "セキュリティ: EFER.NXE=有効\r\n"
+  , "sec_nxe_off": "セキュリティ: EFER.NXE=無効\r\n"
+  , "sec_summary_ok": "セキュリティ: 保護は有効（WP/SMEP/SMAP/NXE）\r\n"
+  , "sec_summary_ng": "セキュリティ: 保護が十分ではありません\r\n"
 }
 

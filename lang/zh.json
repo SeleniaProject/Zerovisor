@@ -28,6 +28,16 @@
   "virtio_net_none": "VirtIO-net: 未找到\r\n",
   "iommu_vtd_none": "VT-d: 未找到DMAR\r\n",
   "iommu_amdv_none": "AMD-Vi: 未找到IVRS\r\n"
+  , "sec_wp_on": "安全: CR0.WP=启用\r\n"
+  , "sec_wp_off": "安全: CR0.WP=未启用\r\n"
+  , "sec_smep_on": "安全: CR4.SMEP=启用\r\n"
+  , "sec_smep_off": "安全: CR4.SMEP=未启用\r\n"
+  , "sec_smap_on": "安全: CR4.SMAP=启用\r\n"
+  , "sec_smap_off": "安全: CR4.SMAP=未启用\r\n"
+  , "sec_nxe_on": "安全: EFER.NXE=启用\r\n"
+  , "sec_nxe_off": "安全: EFER.NXE=未启用\r\n"
+  , "sec_summary_ok": "安全: 保护正常（WP/SMEP/SMAP/NXE）\r\n"
+  , "sec_summary_ng": "安全: 保护未完全启用\r\n"
 }
 
 
