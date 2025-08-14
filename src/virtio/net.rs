@@ -151,10 +151,10 @@ unsafe fn mmio_write64(addr: usize, val: u64) { core::ptr::write_volatile(addr a
 const VIRTIO_STATUS_FEATURES_OK: u8 = 8;
 const VIRTIO_STATUS_DRIVER_OK: u8 = 4;
 
-fn find_first_virtio_net(system_table: &mut SystemTable<Boot>) -> Option<(usize, u8, u32, usize)> {
+fn find_first_virtio_net(system_table: &mut SystemTable<Boot>) -> Option<(usize, u32, usize, usize)> {
     // returns (common_base, notify_mul, notify_base, cfg)
     if let Some(mcfg_hdr) = crate::firmware::acpi::find_mcfg(system_table) {
-        let mut found: Option<(usize, u8, u32, usize)> = None;
+        let mut found: Option<(usize, u32, usize, usize)> = None;
         crate::firmware::acpi::mcfg_for_each_allocation_from(|a| {
             if found.is_some() { return; }
             let ecam_base = a.base_address; let bus_start = a.start_bus; let bus_end = a.end_bus;
@@ -201,7 +201,7 @@ fn find_first_virtio_net(system_table: &mut SystemTable<Boot>) -> Option<(usize,
                     let ntype = (nbar_lo >> 1) & 0x3; let mut nbase: u64 = (nbar_lo as u64) & 0xFFFF_FFF0u64;
                     let n64 = ntype == 0x2; if n64 && (notify_bar as usize) < 5 { let hi = mmio_read32(cfg + (0x10 + (notify_bar as usize)*4 + 4)); nbase |= (hi as u64) << 32; }
                     let notify_base = (nbase as usize).wrapping_add(notify_off as usize);
-                    found = Some((common_base, notify_mul as u8, notify_base, cfg));
+                    found = Some((common_base, notify_mul, notify_base, cfg));
                     break;
                 }}
                 if found.is_some() || bus == 0xFF { break; }

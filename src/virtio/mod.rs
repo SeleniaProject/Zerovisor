@@ -13,7 +13,7 @@ use core::fmt::Write as _;
 
 mod console;
 mod block;
-mod net;
+pub mod net;
 
 /// Read a 32-bit little-endian value from an MMIO address safely.
 #[inline(always)]

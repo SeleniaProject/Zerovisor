@@ -1293,7 +1293,7 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
                 for &b in b"vm: id=" { out[n] = b; n += 1; }
                 n += crate::firmware::acpi::u32_to_dec(info.id as u32, &mut out[n..]);
                 for &b in b" vendor=" { out[n] = b; n += 1; }
-                let v = match info.vendor { crate::hv::vm::HvVendor::Intel => b"intel", crate::hv::vm::HvVendor::Amd => b"amd", crate::hv::vm::HvVendor::Unknown => b"unknown" };
+                let v: &[u8] = match info.vendor { crate::hv::vm::HvVendor::Intel => b"intel", crate::hv::vm::HvVendor::Amd => b"amd", crate::hv::vm::HvVendor::Unknown => b"unknown" };
                 for &b in v { out[n] = b; n += 1; }
                 for &b in b" pml4=0x" { out[n] = b; n += 1; }
                 n += crate::util::format::u64_hex(info.pml4_phys, &mut out[n..]);

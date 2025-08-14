@@ -1141,7 +1141,7 @@ fn frame_and_send_page(writer: &mut impl MigrWriter, page_index: u64, pa: u64, c
     if (flags & FLAG_COMP) != 0 { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_COMPRESSED_PAGES).inc(); }
     else { crate::obs::metrics::Counter::new(&crate::obs::metrics::MIG_RAW_PAGES).inc(); }
     unsafe { tx_log_append(TYP_PAGE, seq, page_index); }
-    (flags & FLAG_COMP) != 0, payload_len
+    ((flags & FLAG_COMP) != 0, payload_len)
 }
 
 fn frame_and_send_manifest(writer: &mut impl MigrWriter, pages: u64, bytes: u64, chunked: bool) {
@@ -1478,7 +1478,7 @@ pub fn chan_handle_ctrl(system_table: &mut SystemTable<Boot>, limit: usize) {
             return;
         }
     }
-    let lang = crate::i18n::detect_lang(system_table);
+    let lang = crate::i18n::detect_lang(&*system_table);
     let _ = stdout.write_str(crate::i18n::t(lang, crate::i18n::key::MIG_NO_BUFFER));
 }
 
