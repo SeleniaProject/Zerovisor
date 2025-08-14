@@ -151,3 +151,19 @@ stateDiagram-v2
 - UEFI / ACPI: [UEFI Specs](https://uefi.org/specifications)
 - VT‑d: [Intel VT‑d Architecture Specification](https://www.intel.com/content/www/us/en/content-details/671488/intel-virtualization-technology-for-directed-i-o-architecture-specification.html)
 - AMD‑VI: [AMD IOMMU Architecture Specification](https://www.amd.com/en/developer/tech-docs.html)
+
+### ライブマイグレーション基盤（初期実装）
+
+- ダーティページ追跡: EPT/NPTのA/Dフラグを用いた恒等マップ上の走査、クリア可。
+- フレーミング: ヘッダ（魔法/seq/len/CRC32）+ ペイロード、RLE圧縮オプション、ゼロ/ハッシュ重複スキップ。
+- Sink: Console/Null/Buffer/SNP(UEFI)/VirtIO-net(1.0+、いずれもfeature-gated)。
+- 制御: ACK/NAK + resend、Txログに基づく再送ウィンドウ送出。
+- 検証: CRC/順序検証、必要時の自動ACK/NAK送出。
+- 可観測性: metrics/trace/auditへ一貫して出力（ラウンド数、バイト数、欠落/重複、帯域）。
+
+### VirtIO-net (modern 1.0+) 簡易実装
+
+- PCI Vendor Capからcommon/notifyを抽出し、BAR解決（64bit BAR対応）。
+- TX(1)/RX(0)の各キューをUEFIページで確保、notify経路確立。
+- RXポンプがMIGフレームを取り込み、CRC検証後にチャネルへ書き込み。
+- 省略: 割込み/MSI、複数キュー、オフロード。初期段階ではポーリングで確認。

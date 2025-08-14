@@ -1,0 +1,43 @@
+name: UEFI Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Add UEFI target
+        run: rustup target add x86_64-unknown-uefi
+
+      - name: Build (default)
+        run: cargo build --release --target x86_64-unknown-uefi
+
+      - name: Build (virtio-net)
+        run: cargo build --release --target x86_64-unknown-uefi --features "virtio-net"
+
+      - name: Build (snp)
+        run: cargo build --release --target x86_64-unknown-uefi --features "snp"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zerovisor-efi
+          path: |
+            target/x86_64-unknown-uefi/release/zerovisor.efi
+            target/x86_64-unknown-uefi/release/deps/*.efi
+
+
