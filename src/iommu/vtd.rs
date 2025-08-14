@@ -205,6 +205,8 @@ pub fn apply_mappings(system_table: &mut SystemTable<Boot>) {
         }
     });
     let _ = system_table.stdout().write_str("iommu: second-level mappings applied\r\n");
+    // Emit trace for mapping activity per domain (summary only)
+    crate::obs::trace::emit(crate::obs::trace::Event::IommuMapAdded(0));
     // If translation is enabled, refresh caches conservatively
     maybe_refresh_after_updates(system_table);
 }
@@ -215,6 +217,7 @@ pub fn unmap_range(system_table: &mut SystemTable<Boot>, dom: u16, iova: u64, le
         let _ = system_table.stdout().write_str("iommu: unmapped from second-level tables\r\n");
     }
     maybe_refresh_after_updates(system_table);
+    crate::obs::trace::emit(crate::obs::trace::Event::IommuMapRemoved(dom));
 }
 
 fn maybe_refresh_after_updates(system_table: &mut SystemTable<Boot>) {
@@ -611,6 +614,9 @@ pub fn invalidate_all(system_table: &mut SystemTable<Boot>) {
         let stdout = system_table.stdout();
         let _ = stdout.write_str(core::str::from_utf8(&buf[..n]).unwrap_or("\r\n"));
     });
+    // Emit metrics and generic trace for all-units invalidate (segment not tracked per loop here)
+    crate::obs::metrics::IOMMU_INV_ALL.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    crate::obs::trace::emit(crate::obs::trace::Event::IommuInvalidateAll(0));
 }
 
 /// Perform a hard global invalidate by toggling TE off and on per unit.
@@ -687,12 +693,16 @@ pub fn invalidate_domain(system_table: &mut SystemTable<Boot>, domid: u16) {
         }
     });
     for i in 0..cnt { srtp_one_unit(system_table, segs[i], regs[i]); }
+    crate::obs::metrics::IOMMU_INV_DOMAIN.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    crate::obs::trace::emit(crate::obs::trace::Event::IommuInvalidateDomain(domid));
 }
 
 pub fn invalidate_bdf(system_table: &mut SystemTable<Boot>, seg: u16, bus: u8, dev: u8, func: u8) {
     if let Some(u) = find_unit_for_bdf(system_table, seg, bus, dev, func) {
         srtp_one_unit(system_table, u.seg, u.reg_base);
     }
+    crate::obs::metrics::IOMMU_INV_BDF.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    crate::obs::trace::emit(crate::obs::trace::Event::IommuInvalidateBdf(seg, bus, dev, func));
 }
 
 fn alloc_zeroed_pages(system_table: &uefi::table::SystemTable<Boot>, pages: usize) -> Option<*mut u8> {

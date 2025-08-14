@@ -11,14 +11,14 @@ use core::fmt::Write as _;
 // --- Minimal PCI ECAM helpers (shared by iommu reporting) ---
 
 #[inline(always)]
-fn mmio_read32(addr: usize) -> u32 { unsafe { core::ptr::read_volatile(addr as *const u32) } }
+pub fn mmio_read32(addr: usize) -> u32 { unsafe { core::ptr::read_volatile(addr as *const u32) } }
 #[inline(always)]
-fn mmio_read16(addr: usize) -> u16 { unsafe { core::ptr::read_volatile(addr as *const u16) } }
+pub fn mmio_read16(addr: usize) -> u16 { unsafe { core::ptr::read_volatile(addr as *const u16) } }
 #[inline(always)]
-fn mmio_read8(addr: usize) -> u8 { unsafe { core::ptr::read_volatile(addr as *const u8) } }
+pub fn mmio_read8(addr: usize) -> u8 { unsafe { core::ptr::read_volatile(addr as *const u8) } }
 
 #[inline(always)]
-fn ecam_fn_base(seg_base: u64, start_bus: u8, bus: u8, dev: u8, func: u8) -> usize {
+pub fn ecam_fn_base(seg_base: u64, start_bus: u8, bus: u8, dev: u8, func: u8) -> usize {
     // ECAM: Base + (Bus-Start)*1MB + Dev*32KB + Func*4KB
     (seg_base as usize)
         .wrapping_add(((bus as usize).saturating_sub(start_bus as usize)) << 20)

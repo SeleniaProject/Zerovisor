@@ -31,7 +31,11 @@ pub fn create_domain() -> Option<u16> {
         for i in 0..MAX_DOMAINS { if !arr[i].used { arr[i] = Domain { id, used: true }; return true; } }
         false
     });
-    if created { crate::obs::metrics::Counter::new(&crate::obs::metrics::IOMMU_DOMAIN_CREATED).inc(); Some(id) } else { None }
+    if created {
+        crate::obs::metrics::Counter::new(&crate::obs::metrics::IOMMU_DOMAIN_CREATED).inc();
+        crate::diag::audit::record(crate::diag::audit::AuditKind::IommuDomainCreate(id));
+        Some(id)
+    } else { None }
 }
 
 pub fn domain_exists(id: u16) -> bool {
@@ -48,7 +52,11 @@ pub fn assign_device(seg: u16, bus: u8, dev: u8, func: u8, domid: u16) -> bool {
         for i in 0..MAX_ASSIGNMENTS { if !arr[i].used { arr[i] = DevAssign { used: true, seg, bus, dev, func, domid }; return true; } }
         false
     });
-    if added { crate::obs::metrics::Counter::new(&crate::obs::metrics::IOMMU_ASSIGN_ADDED).inc(); true } else { false }
+    if added {
+        crate::obs::metrics::Counter::new(&crate::obs::metrics::IOMMU_ASSIGN_ADDED).inc();
+        crate::diag::audit::record(crate::diag::audit::AuditKind::IommuAssignAdded { seg, bus, dev, func, dom: domid });
+        true
+    } else { false }
 }
 
 pub fn list_assignments(mut f: impl FnMut(u16, u8, u8, u8, u16)) { ASSIGNS.lock(|arr| { for a in arr.iter() { if a.used { f(a.seg, a.bus, a.dev, a.func, a.domid); } } }) }
@@ -72,7 +80,18 @@ pub fn unassign_device(seg: u16, bus: u8, dev: u8, func: u8) -> bool {
         for a in arr.iter_mut() { if a.used && a.seg == seg && a.bus == bus && a.dev == dev && a.func == func { a.used = false; return true; } }
         false
     });
-    if removed { crate::obs::metrics::Counter::new(&crate::obs::metrics::IOMMU_ASSIGN_REMOVED).inc(); true } else { false }
+    if removed {
+        // Find the domain id that was previously set for this BDF to include in audit line
+        let domid = ASSIGNS.lock(|arr| {
+            for a in arr.iter() {
+                if !a.used && a.seg == seg && a.bus == bus && a.dev == dev && a.func == func { return a.domid; }
+            }
+            0
+        });
+        crate::obs::metrics::Counter::new(&crate::obs::metrics::IOMMU_ASSIGN_REMOVED).inc();
+        crate::diag::audit::record(crate::diag::audit::AuditKind::IommuAssignRemoved { seg, bus, dev, func, dom: domid });
+        true
+    } else { false }
 }
 
 pub fn add_mapping(domid: u16, iova: u64, pa: u64, len: u64, r: bool, w: bool, x: bool) -> bool {
