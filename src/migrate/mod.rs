@@ -765,6 +765,10 @@ pub fn export_range(system_table: &mut SystemTable<Boot>, start_pa: u64, len: u6
                     // Treat as null for raw export path; framed network path is via send_dirty_pages.
                     let mut i = 0usize; while i < chunk { let _ = read_volatile((addr as *const u8).add(i)); i += 1; }
                 }
+                ExportSink::Virtio => {
+                    // For raw export_range, treat Virtio similarly to Null (raw bytes path is framed elsewhere).
+                    let mut i = 0usize; while i < chunk { let _ = read_volatile((addr as *const u8).add(i)); i += 1; }
+                }
             }
             addr = addr.wrapping_add(chunk as u64);
             remaining -= chunk as u64;
@@ -1712,8 +1716,9 @@ pub fn replay_to_buffer(system_table: &mut SystemTable<Boot>, max_pages: usize) 
     unsafe {
         if let Some(b) = G_BUF.as_ref() {
             // Allocate a scratch page for reconstructed data
+            // Avoid holding stdout across allocation calls
             let scratch = crate::mm::uefi::alloc_pages(system_table, 1, MemoryType::LOADER_DATA);
-            if scratch.is_none() { let _ = stdout.write_str("replay: alloc failed\r\n"); return; }
+            if scratch.is_none() { let stdout2 = system_table.stdout(); let _ = stdout2.write_str("replay: alloc failed\r\n"); return; }
             let scratch = scratch.unwrap();
             let start = if b.len == 0 { 0 } else { (b.wpos + b.cap - b.len) % b.cap };
             let mut cur = ChanCursor { ptr: b.ptr as *const u8, cap: b.cap, pos: start, remaining: b.len };
