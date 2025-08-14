@@ -594,6 +594,39 @@ pub(crate) fn ivrs_list_entries_from(mut writer: impl FnMut(&str), hdr: &'static
     }
 }
 
+/// Iterate AMD-Vi IVHD entries and invoke closure with (PCI Segment, Register Base Address).
+/// This is a shallow, header-safe traversal based on IVRS table format commonly documented.
+pub(crate) fn ivrs_for_each_ivhd_from(mut f: impl FnMut(u16, u64), hdr: &'static SdtHeader) {
+    #[repr(C, packed)] struct IvrsHeader { header: SdtHeader, iv_info: u32 }
+    let base = hdr as *const SdtHeader as usize;
+    let total = hdr.length as usize;
+    let mut off = core::mem::size_of::<IvrsHeader>();
+    while off + 4 <= total {
+        let p = (base + off) as *const u8;
+        let typ = unsafe { p.read() } as u32;
+        let len = (unsafe { p.add(2).read() } as u16) | ((unsafe { p.add(3).read() } as u16) << 8);
+        let len = len as usize;
+        if len < 4 || off + len > total { break; }
+        // IVHD type typically 0x10/0x11 etc. We accept any >= 0x10 as IVHD-like for bootstrap.
+        if typ >= 0x10 {
+            // Common IVHD header: flags(2), length(2), device id(2), cap offset(1), iommu base(8) ...
+            // We conservatively read segment at +4/+5 (many dumps place PCI segment early),
+            // and base address at a later fixed offset (approx +8 or +24 depending on variant).
+            let seg = (unsafe { p.add(4).read() } as u16) | ((unsafe { p.add(5).read() } as u16) << 8);
+            // Try two plausible base offsets safely within len: prefer +8..+15 then fallback +24..+31.
+            let mut base_addr: u64 = 0;
+            if len >= 16 {
+                for i in 0..8 { base_addr |= (unsafe { p.add(8 + i).read() } as u64) << (i * 8); }
+            }
+            if base_addr == 0 && len >= 32 {
+                for i in 0..8 { base_addr |= (unsafe { p.add(24 + i).read() } as u64) << (i * 8); }
+            }
+            if base_addr != 0 { f(seg, base_addr); }
+        }
+        off += len;
+    }
+}
+
 /// Iterate Intel VT-d DRHD units and invoke the closure with (PCI Segment, Register Base Address).
 /// This performs only a shallow, header-safe walk without dereferencing the register base.
 pub(crate) fn dmar_for_each_drhd_from(mut f: impl FnMut(u16, u64), hdr: &'static SdtHeader) {
