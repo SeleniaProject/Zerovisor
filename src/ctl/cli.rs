@@ -196,7 +196,7 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
             let _ = system_table.stdout().write_str("usage: migrate cfg [save|load]\r\n");
             continue;
         }
-            let _ = stdout.write_str("  iommu: info | units | root <bus> | lsctx <bus> | dump <bus:dev.func> | plan | validate | verify | verify-map | xlate bdf=<seg:bus:dev.func> iova=<hex> | walk bdf=<seg:bus:dev.func> iova=<hex> | apply | apply-refresh | apply-safe | sync | invalidate | invalidate dom=<id> | invalidate bdf=<seg:bus:dev.func> | hard-invalidate | fsts | fclear | stats | summary | selftest [quick] [no-apply] [no-inv] [dom=<id>] [walk=<n>] [xlate=<n>] | sample dom=<id> iova=<hex> [count=<n>] [walk] [xlate] | amdv enable|amdv disable\r\n");
+            let _ = stdout.write_str("  iommu: info | units | root <bus> | lsctx <bus> | dump <bus:dev.func> | plan | validate | verify | verify-map | xlate bdf=<seg:bus:dev.func> iova=<hex> | walk bdf=<seg:bus:dev.func> iova=<hex> | apply | apply-refresh | apply-safe | quick | sync | invalidate | invalidate dom=<id> | invalidate bdf=<seg:bus:dev.func> | hard-invalidate | fsts | fclear | stats | summary | selftest [quick] [no-apply] [no-inv] [dom=<id>] [walk=<n>] [xlate=<n>] | sample dom=<id> iova=<hex> [count=<n>] [walk] [xlate] | amdv enable|amdv disable\r\n");
             let _ = stdout.write_str("  dom: new | destroy <id> | purge <id> | seg:bus:dev.func assign <id> | seg:bus:dev.func unassign | list | map dom=<id> iova=<hex> pa=<hex> len=<hex> perm=[rwx] | unmap dom=<id> iova=<hex> len=<hex> | mappings | dump\r\n");
             continue;
         }
@@ -621,6 +621,14 @@ pub fn run_cli(system_table: &mut SystemTable<Boot>) {
         }
         if cmd.eq_ignore_ascii_case("iommu apply-safe") {
             vtd::apply_safe(system_table);
+            continue;
+        }
+        if cmd.eq_ignore_ascii_case("iommu quick") {
+            vtd::plan_assignments(system_table);
+            vtd::apply_safe(system_table);
+            vtd::verify_state(system_table);
+            vtd::verify_mappings(system_table);
+            vtd::invalidate_all(system_table);
             continue;
         }
         if cmd.eq_ignore_ascii_case("iommu sync") {
